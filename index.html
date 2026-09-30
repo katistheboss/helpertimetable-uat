@@ -1,0 +1,1671 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>屋企平日時間表 / Weekly Household Schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E8E3D2;
+    --card:#FBF8F0;
+    --ink:#2B3239;
+    --ink-soft:#5B6169;
+    --clay:#B1503A;
+    --sage:#6E8266;
+    --sage-soft:#DCE3D6;
+    --highlight:#F0C24B;
+    --line:#D8D2BC;
+    --shadow: 0 2px 6px rgba(43,50,57,0.08);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html{ -webkit-text-size-adjust: 100%; }
+  body{
+    margin:0;
+    background:var(--paper);
+    background-image: radial-gradient(circle at 1px 1px, rgba(43,50,57,0.045) 1px, transparent 1px);
+    background-size: 16px 16px;
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    padding: 24px 16px 60px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    overflow-x: hidden;
+  }
+  button, input{ touch-action: manipulation; }
+  .wrap{ max-width: 780px; margin: 0 auto; }
+  header{ text-align:center; margin-bottom: 22px; }
+  .lang-switch{
+    display:flex; background: var(--card); border-radius: 20px;
+    box-shadow: var(--shadow); padding: 3px;
+    font-family:'IBM Plex Mono', monospace; font-size: 0.72rem; font-weight: 600;
+  }
+  .lang-switch button{
+    border: none; background: transparent; padding: 8px 12px; border-radius: 16px;
+    cursor: pointer; color: var(--ink-soft); transition: background 0.15s ease, color 0.15s ease;
+    min-height: 34px;
+  }
+  .lang-switch button.active{ background: var(--clay); color: #fff; }
+  .mode-switch{
+    display:flex; background: var(--card); border-radius: 20px;
+    box-shadow: var(--shadow); padding: 3px;
+    font-family:'IBM Plex Mono', monospace; font-size: 0.7rem; font-weight: 600;
+  }
+  .mode-switch button{
+    border: none; background: transparent; padding: 8px 12px; border-radius: 16px;
+    cursor: pointer; color: var(--ink-soft); transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap; min-height: 34px;
+  }
+  .mode-switch button.active{ background: var(--sage); color: #fff; }
+  .mode-banner{
+    font-size: 0.74rem; color: var(--ink-soft); text-align:center; margin: -14px 0 18px;
+    font-style: italic;
+  }
+  .view-switch{
+    display:flex; gap: 8px; margin: 0 0 20px; background: var(--card);
+    border-radius: 10px; padding: 4px; box-shadow: var(--shadow);
+  }
+  .view-switch button{
+    flex:1; border:none; background:transparent; border-radius: 8px; cursor:pointer;
+    padding: 12px 10px; font-family:'Kalam', cursive; font-size: 1.05rem; font-weight:700;
+    color: var(--ink-soft); transition: background 0.15s ease, color 0.15s ease; min-height: 44px;
+  }
+  .view-switch button.active{ background: var(--clay); color:#fff; }
+  .summary-heading{
+    font-family:'Kalam', cursive; font-size: 1.3rem; margin: 0 0 4px; color: var(--ink);
+  }
+  .todo-days{ display:flex; flex-direction:column; gap: 14px; margin-top: 16px; }
+  .todo-day{
+    background: var(--card); border-radius: 8px; padding: 14px 16px 16px;
+    box-shadow: var(--shadow); border-left: 4px solid var(--clay);
+  }
+  .todo-day:nth-child(2n){ border-left-color: var(--sage); }
+  .todo-day h3{
+    font-family:'Kalam', cursive; font-size: 1.1rem; margin: 0 0 8px; color: var(--ink);
+  }
+  .todo-day h3 .todo-day-sub{ font-size: 0.75rem; font-weight: 400; color: var(--ink-soft); margin-left: 6px; }
+  .todo-tasks{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap: 6px; }
+  .todo-tasks li{
+    font-size: 0.88rem; line-height: 1.4; padding: 6px 0; border-bottom: 1px dashed var(--line);
+    display:flex; align-items:center; gap: 8px;
+  }
+  .todo-tasks li:last-child{ border-bottom:none; }
+  .todo-tasks input[type=checkbox]{ width:19px; height:19px; accent-color: var(--sage); cursor:pointer; flex-shrink:0; }
+  .todo-tasks .todo-text{ flex:1; }
+  .todo-tasks li.done .todo-text{ text-decoration: line-through; opacity: 0.55; }
+  .todo-empty{ font-size: 0.82rem; color: var(--ink-soft); font-style: italic; }
+
+  /* ---- row action icons (Ma'am & Sir mode) ---- */
+  .row-actions{ display:flex; flex-direction:column; gap: 0; align-items:flex-start; }
+  .row-actions button{
+    border:none; background:transparent; cursor:pointer; font-size: 0.9rem;
+    color: var(--ink-soft); padding: 4px; line-height:1; min-width: 30px; min-height: 26px;
+  }
+  .row-actions button:hover{ color: var(--clay); }
+
+  /* ---- inline edit form for a task row ---- */
+  .edit-row{
+    grid-column: 1 / -1; background: var(--sage-soft); border-radius: 6px;
+    padding: 10px 12px; display:flex; flex-direction:column; gap: 8px; margin: 4px 0;
+  }
+  .edit-row .edit-times{ display:flex; gap: 8px; flex-wrap: wrap; }
+  .edit-row input[type=text], .edit-row input[type=time]{
+    border: 1px solid var(--line); border-radius: 5px; padding: 9px 8px;
+    font-family:'IBM Plex Sans', sans-serif; font-size: 0.9rem; background:#fff;
+    min-height: 38px;
+  }
+  .edit-row .edit-times label{ flex:1; min-width: 120px; }
+  .edit-row .edit-times input{ width: 100%; }
+  .edit-row .edit-text-row{ display:flex; flex-direction:column; gap:6px; }
+  .edit-row .edit-text-row input{ width:100%; }
+  .edit-row label.fixed-toggle{
+    display:flex; align-items:center; gap: 6px; font-size: 0.78rem; color: var(--ink-soft);
+  }
+  .edit-row .edit-actions{ display:flex; gap: 8px; justify-content:flex-end; }
+  .edit-row .edit-actions button{
+    border:none; border-radius: 5px; padding: 10px 16px; font-size: 0.82rem; cursor:pointer; font-weight:600;
+    min-height: 40px;
+  }
+  .edit-row .save-btn{ background: var(--clay); color:#fff; }
+  .edit-row .cancel-btn{ background: transparent; color: var(--ink-soft); }
+
+  .add-task-btn{
+    margin-top: 12px; width:100%; padding: 12px; border: 1px dashed var(--line);
+    border-radius: 6px; background: transparent; color: var(--ink-soft); cursor:pointer;
+    font-size: 0.85rem; font-family:'IBM Plex Sans', sans-serif; min-height: 44px;
+  }
+  .add-task-btn:hover{ border-color: var(--clay); color: var(--clay); }
+  .panel-header{
+    display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; flex-wrap: wrap;
+    margin: 0 0 8px; padding-bottom: 10px; border-bottom: 1px dashed var(--line);
+  }
+  .panel-header .panel-title{ margin:0; padding-bottom:0; border-bottom:none; flex:1; }
+  .edit-master-btn{
+    flex-shrink:0; font-family:'IBM Plex Mono', monospace; font-size: 0.72rem; font-weight:600;
+    background: var(--sage-soft); color: #3E4D38; border: none; border-radius: 16px;
+    padding: 8px 12px; cursor:pointer; white-space:nowrap; min-height: 34px;
+  }
+  .edit-master-btn:hover{ background: var(--sage); color:#fff; }
+  .instance-hint{
+    font-size: 0.74rem; color: var(--clay); margin: -2px 0 10px; font-style: italic;
+  }
+  .reset-instance-btn{
+    font-family:'IBM Plex Mono', monospace; font-size: 0.7rem; font-weight:600;
+    background: transparent; color: var(--clay); border: 1px solid var(--clay);
+    border-radius: 14px; padding: 8px 14px; cursor:pointer; margin: -2px 0 12px; min-height: 36px;
+  }
+  .reset-instance-btn:hover{ background: var(--clay); color:#fff; }
+  header h1{
+    font-family:'Kalam', cursive; font-weight:700; font-size: 2.2rem;
+    margin: 8px 0 4px; color: var(--ink); transform: rotate(-1deg);
+  }
+  header p{ margin:0; color: var(--ink-soft); font-size: 0.9rem; }
+  .notes{
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px; margin: 24px 0 28px;
+  }
+  .note{
+    background: var(--card); border-radius: 3px; padding: 10px 11px 12px;
+    box-shadow: var(--shadow); font-size: 0.78rem; line-height: 1.32;
+    position: relative; border-top: 3px solid var(--clay);
+  }
+  .note:nth-child(2n){ border-top-color: var(--sage); transform: rotate(0.6deg); }
+  .note:nth-child(3n){ transform: rotate(-0.7deg); }
+  .note:nth-child(5n){ border-top-color: var(--highlight); }
+  .note b{
+    display:block; font-family:'IBM Plex Mono', monospace; font-size: 0.72rem;
+    color: var(--clay); margin-bottom: 3px;
+  }
+  .tabs{ display:flex; gap: 4px; margin-bottom: 0; overflow-x:auto; }
+  .tab{
+    font-family:'Kalam', cursive; font-size: 1rem; font-weight: 700;
+    padding: 12px 16px 10px; background: #D9D3BC; color: var(--ink-soft);
+    border: none; border-radius: 8px 8px 0 0; cursor: pointer; position: relative;
+    top: 2px; transition: transform 0.15s ease, background 0.15s ease; white-space: nowrap;
+    min-height: 44px;
+  }
+  .tab .sub{
+    display:block; font-family:'IBM Plex Sans', sans-serif; font-weight: 500;
+    font-size: 0.6rem; color: inherit; opacity: 0.75;
+  }
+  .tab .tab-date{
+    font-family:'IBM Plex Mono', monospace; font-weight: 500; font-size: 0.62rem; opacity: 0.7;
+  }
+  .tab.active{ background: var(--card); color: var(--ink); top: 0; box-shadow: 0 -2px 4px rgba(43,50,57,0.05); }
+  .tab.is-today::after{
+    content: ''; position:absolute; top: 6px; right: 6px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--clay);
+  }
+  .panel{
+    background: var(--card); border-radius: 0 6px 6px 6px; box-shadow: var(--shadow);
+    padding: 20px 20px 8px;
+  }
+  .panel-title{
+    font-size: 0.76rem; color: var(--ink-soft); margin: 0 0 8px;
+    padding-bottom: 10px; border-bottom: 1px dashed var(--line);
+  }
+  .panel-note{
+    font-size: 0.74rem; color: var(--clay); margin: 0 0 10px; font-style: italic;
+  }
+  .timeline{ list-style:none; margin:0; padding:0; }
+  .row{
+    display:grid; grid-template-columns: 110px 1fr; gap: 14px; padding: 9px 0;
+    border-bottom: 1px solid var(--line); align-items: baseline; position: relative;
+  }
+  .row:last-child{ border-bottom: none; }
+  .row .time{
+    font-family:'IBM Plex Mono', monospace; font-size: 0.72rem;
+    color: var(--ink-soft); line-height: 1.4; padding-top: 2px;
+  }
+  .row .task{ font-size: 0.9rem; line-height: 1.42; }
+  .row.fixed .task{ font-weight: 600; }
+  .row.fixed .time{ color: var(--clay); }
+  .row.fixed::before{
+    content: '📌'; position: absolute; left: -18px; top: 9px; font-size: 0.68rem; opacity: 0.85;
+  }
+  .row.is-now{
+    background: linear-gradient(90deg, rgba(240,194,75,0.35), rgba(240,194,75,0.08));
+    border-radius: 6px; margin: 0 -10px; padding: 9px 10px;
+  }
+  .row.adhoc-row{ background: rgba(110,130,102,0.08); border-radius: 6px; margin: 0 -10px; padding: 9px 10px; }
+  .row.adhoc-row.is-now{
+    background: linear-gradient(90deg, rgba(240,194,75,0.35), rgba(110,130,102,0.12));
+  }
+  .row.adhoc-row .time{ color: var(--sage); }
+  .now-tag{
+    display:inline-flex; align-items:center; gap:5px; margin-left: 8px;
+    font-family:'IBM Plex Mono', monospace; font-size: 0.64rem; color: var(--clay);
+    font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  }
+  .now-dot{
+    width: 6px; height:6px; border-radius:50%; background: var(--clay);
+    animation: pulse 1.6s infinite ease-in-out;
+  }
+  @keyframes pulse{ 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:0.4; transform:scale(1.3); } }
+
+  /* ---- header controls ---- */
+  .header-controls{
+    display:flex; gap: 6px; align-items:center; flex-wrap: wrap;
+    justify-content:flex-end; width: 100%; margin-bottom: 14px;
+  }
+  .log-btn{
+    font-family:'IBM Plex Mono', monospace; font-size: 0.7rem; font-weight: 600;
+    background: var(--card); color: var(--ink-soft); border: none;
+    border-radius: 20px; padding: 9px 12px; box-shadow: var(--shadow); cursor: pointer;
+    display:flex; align-items:center; gap: 4px; min-height: 34px;
+  }
+  .log-btn:hover{ color: var(--clay); }
+
+  /* ---- checkboxes on task rows ---- */
+  .row{ grid-template-columns: 26px 110px 1fr; }
+  .timeline.mode-mgmt .row{ grid-template-columns: 46px 110px 1fr; }
+  .row .check{
+    display:flex; align-items:flex-start; padding-top: 3px;
+  }
+  .row .check input{
+    width: 20px; height: 20px; accent-color: var(--sage); cursor: pointer;
+  }
+  .row .check input:disabled{ cursor: not-allowed; opacity: 0.35; }
+  .row.done .task{ text-decoration: line-through; opacity: 0.55; }
+  .row.fixed::before{ display:none; }
+
+  /* ---- ad-hoc task section ---- */
+  .adhoc-box{
+    margin: 18px 0 12px; padding-top: 16px; border-top: 1px dashed var(--line);
+  }
+  .adhoc-box h2{
+    font-family:'Kalam', cursive; font-size: 1rem; margin: 0 0 10px; color: var(--ink);
+  }
+  .adhoc-hint{ font-size: 0.74rem; color: var(--ink-soft); margin: -6px 0 10px; font-style: italic; }
+  .adhoc-form{ display:flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .adhoc-form input[type=text]{
+    flex:1; min-width: 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+    font-family:'IBM Plex Sans', sans-serif; font-size: 0.88rem; background: #fff;
+  }
+  .adhoc-form input[type=time]{
+    width: 100px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 6px;
+    font-family:'IBM Plex Mono', monospace; font-size: 0.82rem; background: #fff;
+  }
+  .adhoc-form button{
+    background: var(--clay); color:#fff; border:none; border-radius: 6px;
+    padding: 10px 16px; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space:nowrap;
+    min-height: 40px;
+  }
+  .adhoc-list{ list-style:none; margin:0; padding:0; }
+  .adhoc-list li{
+    display:flex; align-items:center; gap: 10px; padding: 8px 0;
+    border-bottom: 1px dashed var(--line); font-size: 0.88rem;
+  }
+  .adhoc-list li:last-child{ border-bottom:none; }
+  .adhoc-list input[type=checkbox]{ width:20px; height:20px; accent-color: var(--sage); cursor:pointer; flex-shrink:0; }
+  .adhoc-list .adhoc-time{
+    font-family:'IBM Plex Mono', monospace; font-size: 0.76rem; color: var(--clay); font-weight:600;
+    min-width: 44px;
+  }
+  .adhoc-list .adhoc-text{ flex:1; }
+  .adhoc-list li.done .adhoc-text{ text-decoration: line-through; opacity: 0.55; }
+  .adhoc-list .del-btn{
+    border:none; background:transparent; color: var(--ink-soft); cursor:pointer; font-size: 1.1rem;
+    line-height: 1; padding: 6px; min-width: 32px; min-height: 32px;
+  }
+  .adhoc-list .del-btn:hover{ color: var(--clay); }
+  .adhoc-empty{ font-size: 0.82rem; color: var(--ink-soft); font-style: italic; }
+
+  /* ---- log modal ---- */
+  .modal-overlay{
+    position: fixed; inset: 0; background: rgba(43,50,57,0.45);
+    display:none; align-items:center; justify-content:center; padding: 20px; z-index: 50;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background: var(--card); border-radius: 10px; max-width: 480px; width:100%;
+    max-height: 80vh; overflow-y:auto; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  .modal.modal-wide{ max-width: 620px; }
+  .modal .timeline{ margin-top: 10px; }
+  .modal h2{ font-family:'Kalam', cursive; font-size: 1.2rem; margin: 0 0 4px; }
+  .modal .modal-sub{ font-size: 0.76rem; color: var(--ink-soft); margin: 0 0 14px; }
+  .modal-close{
+    float:right; border:none; background:transparent; font-size: 1.5rem; cursor:pointer;
+    color: var(--ink-soft); line-height: 1; padding: 6px; min-width: 40px; min-height: 40px;
+  }
+  .log-item{ padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .log-item:last-child{ border-bottom:none; }
+  .log-item .lt-task{ font-size: 0.86rem; font-weight: 600; margin-bottom: 2px; }
+  .log-item .lt-meta{ font-size: 0.76rem; color: var(--ink-soft); }
+  .log-loading{ font-size: 0.82rem; color: var(--ink-soft); text-align:center; padding: 20px 0; }
+  .log-filters{
+    display:flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; padding-bottom: 12px;
+    border-bottom: 1px dashed var(--line); align-items:center;
+  }
+  .log-filters select, .log-filters input[type=date]{
+    font-family:'IBM Plex Sans', sans-serif; font-size: 0.76rem; padding: 7px 8px;
+    border: 1px solid var(--line); border-radius: 6px; background:#fff; color: var(--ink);
+    min-height: 36px;
+  }
+  .log-filters button{
+    background: var(--clay); color:#fff; border:none; border-radius: 6px;
+    padding: 8px 14px; font-size: 0.78rem; font-weight:600; cursor:pointer; min-height: 36px;
+  }
+  .log-filters .lf-date-sep{ font-size: 0.74rem; color: var(--ink-soft); }
+  .lt-action-completed{ color: var(--sage); font-weight:600; }
+  .lt-action-uncompleted{ color: var(--clay); font-weight:600; }
+
+  footer{ text-align:center; margin-top: 24px; font-size: 0.76rem; color: var(--ink-soft); }
+  footer .foot-note{
+    display:inline-block; background: var(--sage-soft); color: #3E4D38;
+    padding: 8px 14px; border-radius: 20px; margin-top: 6px; max-width: 560px;
+  }
+  @media (max-width: 600px){
+    .modal-overlay{ padding: 10px; align-items:flex-end; }
+    .modal{ max-height: 88vh; border-radius: 14px 14px 0 0; padding: 18px 16px; }
+    .modal.modal-wide{ max-width: 100%; }
+  }
+  @media (max-width: 480px){
+    .header-controls{ justify-content:center; margin-bottom: 8px; }
+    header h1{ font-size: 1.6rem; }
+    .row{ grid-template-columns: 24px 74px 1fr; gap: 8px; }
+    .timeline.mode-mgmt .row{ grid-template-columns: 34px 74px 1fr; gap: 8px; }
+    .panel{ padding: 16px 14px 6px; }
+    .notes{ grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+    .adhoc-form input[type=time]{ width: 100%; order: 1; }
+    .adhoc-form input[type=text]{ order: 2; min-width: 100%; }
+    .adhoc-form button{ order: 3; width: 100%; }
+    .row .time{ font-size: 0.68rem; }
+    .row .task{ font-size: 0.86rem; }
+    .tab{ padding: 11px 12px 9px; font-size: 0.92rem; }
+    .view-switch{ flex-wrap: wrap; }
+    .view-switch button{ font-size: 0.88rem; padding: 10px 6px; min-width: 45%; }
+  }
+  @media (max-width: 360px){
+    .wrap{ max-width: 100%; }
+    body{ padding: 16px 10px 50px; }
+    .row{ grid-template-columns: 22px 64px 1fr; gap: 6px; }
+    .timeline.mode-mgmt .row{ grid-template-columns: 32px 64px 1fr; gap: 6px; }
+  }
+  @media (hover: none){
+    .tab, .lang-switch button, .mode-switch button, .log-btn, .edit-master-btn,
+    .row-actions button, .adhoc-list .del-btn, .add-task-btn, .reset-instance-btn,
+    .adhoc-form button, .edit-row .edit-actions button{
+      -webkit-tap-highlight-color: transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce){ .now-dot{ animation: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="header-controls">
+      <button class="log-btn" id="logBtn">📊 <span id="logBtnLabel"></span></button>
+      <div class="mode-switch" id="modeSwitch">
+        <button data-mode="mgmt">👫 <span id="modeMgmtLabel"></span></button>
+        <button data-mode="vanessa">🧹 <span id="modeVanessaLabel"></span></button>
+      </div>
+      <div class="lang-switch" id="langSwitch">
+        <button data-lang="zh">中文</button>
+        <button data-lang="en">EN</button>
+      </div>
+    </div>
+    <h1 id="pageTitle"></h1>
+    <p id="pageSub"></p>
+    <p id="weekRange" style="margin:4px 0 0;font-size:0.78rem;color:var(--ink-soft);font-family:'IBM Plex Mono', monospace;"></p>
+  </header>
+
+  <p class="mode-banner" id="modeBanner"></p>
+
+  <div class="view-switch" id="viewSwitch">
+    <button data-view="todo">✅ <span id="viewTodoLabel"></span></button>
+    <button data-view="summary">📋 <span id="viewSummaryLabel"></span></button>
+    <button data-view="timetable">📅 <span id="viewTimetableLabel"></span></button>
+  </div>
+
+  <div id="todoView" style="display:none;">
+    <h2 class="summary-heading" id="todoHeading"></h2>
+    <div class="todo-days" id="todoDays"></div>
+  </div>
+
+  <div id="summaryView" style="display:none;">
+    <h2 class="summary-heading" id="summaryHeading"></h2>
+    <div class="notes" id="notes"></div>
+  </div>
+
+
+  <div id="timetableView">
+    <div class="tabs" id="tabs"></div>
+    <div class="panel">
+      <div class="panel-header">
+        <p class="panel-title" id="panelTitle"></p>
+        <button class="edit-master-btn" id="addTaskBtn" style="display:none;">✏️ <span id="addTaskLabel"></span></button>
+      </div>
+      <p class="panel-note" id="panelNote" style="display:none;"></p>
+      <p class="instance-hint" id="instanceHint" style="display:none;"></p>
+      <button class="reset-instance-btn" id="resetInstanceBtn" style="display:none;"></button>
+      <ul class="timeline" id="timeline"></ul>
+
+      <div class="adhoc-box">
+        <h2 id="adhocTitle"></h2>
+        <p class="adhoc-hint" id="adhocHint"></p>
+        <div class="adhoc-form" id="adhocForm">
+          <input type="time" id="adhocTimeInput">
+          <input type="text" id="adhocInput" placeholder="">
+          <button id="adhocAddBtn"></button>
+        </div>
+        <ul class="adhoc-list" id="adhocList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div id="footPin"></div>
+    <div class="foot-note" id="footNote"></div>
+  </footer>
+</div>
+
+<div class="modal-overlay" id="logModal">
+  <div class="modal modal-wide">
+    <button class="modal-close" id="logModalClose">&times;</button>
+    <h2 id="logModalTitle"></h2>
+    <p class="modal-sub" id="logModalSub"></p>
+    <div class="log-filters" id="logFilters">
+      <select id="logFilterDay"></select>
+      <select id="logFilterType"></select>
+      <select id="logFilterAction"></select>
+      <input type="date" id="logFilterFrom">
+      <span class="lf-date-sep">–</span>
+      <input type="date" id="logFilterTo">
+      <button id="logFilterBtn"></button>
+    </div>
+    <div id="logModalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editModal">
+  <div class="modal modal-wide">
+    <button class="modal-close" id="editModalClose">&times;</button>
+    <h2 id="editModalTitle"></h2>
+    <p class="modal-sub" id="editModalSub"></p>
+    <ul class="timeline mode-mgmt" id="editTimeline"></ul>
+    <button class="add-task-btn" id="modalAddTaskBtn">＋ <span id="modalAddTaskLabel"></span></button>
+  </div>
+</div>
+
+
+<script>
+const STRINGS = {
+  zh: {
+    title: '屋企平日時間表',
+    sub: '星期一至六 · 7:00 起身 · 工作至 21:00(9pm)',
+    footPin: '📌 = 每日固定事項',
+    footNote: '貓砂盆每2週徹底清洗一次(雙數週星期五);淋花時段為建議,實際需先問先生。',
+    now: '而家',
+    logBtnLabel: '記錄',
+    adhocTitle: (dayLabel)=>`📝 ${dayLabel} 臨時工作`,
+    adhocPlaceholder: '輸入臨時工作...',
+    adhocAdd: '新增',
+    adhocEmpty: '暫時未有臨時工作',
+    adhocHint: '📝 有揀時間嘅臨時工作會自動排入上面時間表;冇揀時間就留喺呢度',
+    delAria: '刪除',
+    logModalTitle: '工作記錄',
+    logModalSubToday: (dayLabel)=>`${dayLabel} 各項工作嘅完成記錄`,
+    logCompleted: (n)=>`已完成 ${n} 次`,
+    logNever: '未有記錄',
+    logLastDates: '最近日期:',
+    loading: '載入緊...',
+    checkboxDisabledNote: '(只可於當日星期打勾)',
+    storageNote: '⚠️ 打剔同臨時工作資料為共用,所有打開呢個網頁嘅人都會睇到',
+    storageUnavailable: '打剔/記錄功能需要喺對話入面打開先用到',
+    modeMgmt: '太太先生',
+    modeVanessa: 'Vanessa',
+    modeBannerMgmt: '👫 太太先生模式 — 編輯嘅係總時間表(適用所有未來每星期,唔止呢一週)',
+    modeBannerVanessa: '🧹 Vanessa模式 — 可以打剔已完成嘅工作(呢個顯示緊呢一週)',
+    weekRangeText: (range)=>`顯示緊呢一週:${range}`,
+    editBtn: '編輯',
+    delBtn: '刪除',
+    addTaskLabel: '編輯總時間表',
+    addTaskRowLabel: '新增工作',
+    saveBtn: '儲存',
+    cancelBtn: '取消',
+    formStart: '開始時間',
+    formEnd: '結束時間',
+    formTaskZh: '工作內容(中文)',
+    formTaskEn: '工作內容(English)',
+    formFixed: '固定事項',
+    confirmDelete: '確定要刪除呢項工作?',
+    viewTimetableLabel: '時間表',
+    viewSummaryLabel: '定期工作摘要',
+    summaryHeading: '📋 定期工作摘要',
+    viewTodoLabel: '待辦清單',
+    todoHeading: '✅ 每日固定任務清單',
+    todoEmpty: '呢日冇固定任務',
+    instanceHint: '✏️ 喺呢度編輯只改呢一週,唔會影響總時間表',
+    resetInstanceBtn: '↺ 還原返總時間表(呢一週)',
+    logModalSubAudit: '工作完成記錄 — 可用下面篩選器查看指定日子/類型/日期範圍',
+    logFilterAllDays: '所有日子',
+    logFilterAllTypes: '所有類型',
+    logFilterAllActions: '所有動作',
+    logFilterRegular: '固定工作',
+    logFilterAdhoc: '臨時工作',
+    logActionCompleted: '完成',
+    logActionUncompleted: '取消打勾',
+    logFilterApply: '篩選',
+    logFilterEmpty: '呢個篩選條件下未有記錄',
+  },
+  en: {
+    title: 'Weekly Household Schedule',
+    sub: 'Monday to Saturday · Up at 7:00am · Workday ends 9:00pm',
+    footPin: '📌 = daily fixed task',
+    footNote: 'Litter box deep-clean is every 2 weeks (even-numbered Fridays); plant-watering times are suggested — check with the husband first.',
+    now: 'Now',
+    logBtnLabel: 'Log',
+    adhocTitle: (dayLabel)=>`📝 ${dayLabel} Ad-hoc Tasks`,
+    adhocPlaceholder: 'Type a one-off task...',
+    adhocAdd: 'Add',
+    adhocEmpty: 'No ad-hoc tasks yet',
+    adhocHint: '📝 Tasks with a time are automatically slotted into the schedule above; leave it blank to keep it here instead',
+    delAria: 'Delete',
+    logModalTitle: 'Task Log',
+    logModalSubToday: (dayLabel)=>`Completion history for ${dayLabel}'s tasks`,
+    logCompleted: (n)=>`Completed ${n} times`,
+    logNever: 'No history yet',
+    logLastDates: 'Recent dates:',
+    loading: 'Loading…',
+    checkboxDisabledNote: "(only tickable on that weekday)",
+    storageNote: '⚠️ Checked tasks and ad-hoc items are shared — visible to anyone who opens this page',
+    storageUnavailable: 'Ticking/log features only work when this is opened inside the chat',
+    modeMgmt: 'Ma\'am & Sir',
+    modeVanessa: 'Vanessa',
+    modeBannerMgmt: "👫 Ma'am & Sir mode — editing the master schedule (applies to every future week, not just this one)",
+    modeBannerVanessa: "🧹 Vanessa mode — tick off tasks as they're completed (showing this week)",
+    weekRangeText: (range)=>`Showing this week: ${range}`,
+    editBtn: 'Edit',
+    delBtn: 'Delete',
+    addTaskLabel: 'Edit Master List',
+    addTaskRowLabel: 'Add task',
+    saveBtn: 'Save',
+    cancelBtn: 'Cancel',
+    formStart: 'Start time',
+    formEnd: 'End time',
+    formTaskZh: 'Task (Chinese)',
+    formTaskEn: 'Task (English)',
+    formFixed: 'Fixed task',
+    confirmDelete: 'Delete this task?',
+    viewTimetableLabel: 'Time Reference',
+    viewSummaryLabel: 'Regular Tasks Summary',
+    summaryHeading: '📋 Regular Tasks Summary',
+    viewTodoLabel: 'To-do List',
+    todoHeading: '✅ Daily Fixed Task List',
+    todoEmpty: 'No fixed tasks this day',
+    instanceHint: '✏️ Editing here only changes this week — the master list is unaffected',
+    resetInstanceBtn: '↺ Reset this week to master list',
+    logModalSubAudit: 'Task completion history — use the filters below to narrow by day, type, or date range',
+    logFilterAllDays: 'All days',
+    logFilterAllTypes: 'All types',
+    logFilterAllActions: 'All actions',
+    logFilterRegular: 'Fixed tasks',
+    logFilterAdhoc: 'Ad-hoc tasks',
+    logActionCompleted: 'Completed',
+    logActionUncompleted: 'Unchecked',
+    logFilterApply: 'Filter',
+    logFilterEmpty: 'No records match this filter',
+  }
+};
+
+const NOTES = [
+  { zh: ['貓咪基本護理', '換水、洗貓食碟、刷牙、清眼屎、剷屎尿;每日7:00am'], en: ['Basic cat care', 'Change water, wash food bowl, brush teeth, clean eyes, scoop litter; daily 7:00am'] },
+  { zh: ['陪貓玩', '8:00–8:30am 及 8:30–8:45pm'], en: ['Play with the cat', '8:00–8:30am & 8:30–8:45pm'] },
+  { zh: ['廚房深層清潔', '每星期三'], en: ['Deep clean kitchen', 'Weekly, Wednesday'] },
+  { zh: ['全屋吸塵/抹地/洗厠所', '每日8:30–9:30'], en: ['Vacuum/mop/toilet', 'Daily 8:30–9:30am'] },
+  { zh: ['抽濕機(輪房)', '主人房一/BB房二/客廳三,最少4hr'], en: ['Dehumidifier (rotating room)', 'Master Mon / Baby room Tue / Living Rm Wed, min 4hr'] },
+  { zh: ['床單/枕頭', 'Rainbow機,星期一'], en: ['Sheets/pillows', 'Rainbow machine, Monday'] },
+  { zh: ['吸梳化', 'Rainbow機,星期二'], en: ['Vacuum sofa', 'Rainbow machine, Tuesday'] },
+  { zh: ['準備先生Lunch box', '星期一至四,連同準備早餐'], en: ["Prepare husband's lunch box", 'Mon–Thu, alongside breakfast prep'] },
+  { zh: ['洗冷氣', '主人房→書房→BB房→客廳(每週一,輪流)'], en: ['Clean AC unit', 'Master→Study→Baby room→Living rm (Mon, rotating)'] },
+  { zh: ['Rainbow吸地氈', '每星期五12:00'], en: ['Rainbow carpet clean', 'Every Friday 12:00pm'] },
+  { zh: ['主人房洗衣機叉電', '星期一'], en: ["Charge master bdrm mini washer", 'Monday'] },
+  { zh: ['洗白色衫 / 黑色衫', '星期三 / 星期四'], en: ['White laundry / Black laundry', 'Wednesday / Thursday'] },
+  { zh: ['抽油煙機清潔', '星期三晚煮完飯後'], en: ['Clean range hood', 'Wed night, after cooking'] },
+  { zh: ['洗油煙機', '星期二15:00'], en: ['Clean the range hood', 'Tuesday 3:00pm'] },
+  { zh: ['深層清洗BB沖奶粉機、UV機', '星期二'], en: ['Deep clean baby formula machine & UV steriliser', 'Tuesday'] },
+  { zh: ['買餸煮飯', '星期二、四'], en: ['Grocery + cook', 'Tuesday & Thursday'] },
+  { zh: ['淋花(先問先生)', '每週2次(一、三)15分鐘'], en: ['Water plants (ask husband)', '2x/week (Mon & Wed), 15 min'] },
+  { zh: ['清潔Philips飲水機', '每週1次(星期五)'], en: ['Clean water dispenser', 'Weekly (Friday)'] },
+  { zh: ['沖涼', '每晚8:45–9:00'], en: ['Shower', 'Daily 8:45–9:00pm'] },
+  { zh: ['查詢早餐/早上安排', '每晚8:00'], en: ['Check breakfast/morning needs', 'Daily 8:00pm'] },
+  { zh: ['切生果', '每晚7:30'], en: ['Cut fruit', 'Daily 7:30pm'] },
+];
+
+const DAYS = [
+  {
+    key: 'mon', weekday: 1,
+    label: { zh: '一', en: 'Mon' },
+    sub: { zh: '換床單/叉電', en: 'Bedding / Charge' },
+    title: { zh: '星期一 — 換床單/枕頭日 · 叉電 · 煮午餐', en: 'Monday — Bedding/pillow day · Charge washer · Cook lunch' },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['07:20','08:00', {zh:'準備並提供早餐、準備先生Lunch box', en:"Prepare and serve breakfast; prepare husband's lunch box"}, true],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['08:30','09:30', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['09:30','10:00', {zh:'開抽濕機(主人房,最少4小時)', en:'Dehumidifier (master bedroom, min 4hr)'}, true],
+      ['10:00','11:00', {zh:'街市買菜(1小時)', en:'Grocery shopping at the market (1 hr)'}, false],
+      ['11:00','12:00', {zh:'準備午餐材料', en:'Prep lunch ingredients'}, false],
+      ['12:00','13:00', {zh:'煮午餐並提供比孕婦、餐後清潔', en:'Cook and serve lunch; clean up after'}, false],
+      ['13:00','13:45', {zh:'換床單、吸枕頭(Rainbow機)', en:'Change bedsheets, vacuum pillows (Rainbow machine)'}, true],
+      ['13:45','14:00', {zh:'主人房迷你洗衣機叉電', en:"Charge master bedroom's mini washing machine"}, true],
+      ['14:00','14:30', {zh:'洗一部冷氣(順序:主人房→書房→BB房→客廳,輪流)', en:'Clean one AC unit (order: Master bdrm→Study→Baby room→Living rm, rotating)'}, true],
+      ['14:30','15:00', {zh:'一般家居整理/彈性家務', en:'General tidying / flexible chores'}, false],
+      ['15:00','15:30', {zh:'YouTube學習本地菜式', en:'YouTube — learn local dishes'}, false],
+      ['15:30','15:45', {zh:'淋花(先問先生)', en:'Water the plants (check with husband first)'}, false],
+      ['15:45','16:00', {zh:'家居整理', en:'Tidy up'}, false],
+      ['16:00','19:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+      ['19:00','19:30', {zh:'準備翌日早餐/午餐食材', en:"Prep next day's breakfast/lunch ingredients"}, true],
+      ['19:30','19:45', {zh:'切生果', en:'Cut fruit'}, true],
+      ['19:45','20:00', {zh:'洗碗', en:'Wash dishes'}, true],
+      ['20:00','20:15', {zh:'查詢太太、先生早餐/早上有無特別安排', en:"Check with wife & husband on breakfast/next morning's needs"}, true],
+      ['20:15','20:30', {zh:'彈性時間', en:'Flexible time'}, false],
+      ['20:30','20:45', {zh:'陪貓玩(15分鐘)', en:'Play with the cat (15 min)'}, true],
+      ['20:45','21:00', {zh:'沖涼', en:'Shower'}, false],
+    ]
+  },
+  {
+    key: 'tue', weekday: 2,
+    label: { zh: '二', en: 'Tue' },
+    sub: { zh: '買餸/晚餐', en: 'Grocery / Dinner' },
+    title: { zh: '星期二 — 買餸日 · 煮晚餐 · 孕婦運動日', en: 'Tuesday — Grocery day · Cook dinner · Exercise day' },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['07:20','08:00', {zh:'準備早餐、準備先生Lunch box', en:"Prepare breakfast; prepare husband's lunch box"}, true],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['09:30','09:40', {zh:'開抽濕機(BB房,最少4小時)', en:'Dehumidifier (baby room, min 4hr)'}, true],
+      ['09:40','10:00', {zh:'YouTube學習本地菜式', en:'YouTube — learn local dishes'}, false],
+      ['10:00','11:00', {zh:'出門拎身份證', en:'Go out to collect ID card'}, false],
+      ['12:00','13:00', {zh:'買菜', en:'Grocery shopping'}, false],
+      ['13:00','14:00', {zh:'自行簡便午餐', en:'Quick lunch for self'}, false],
+      ['14:00','15:00', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['15:00','15:15', {zh:'洗油煙機', en:'Clean the range hood'}, true],
+      ['15:15','15:45', {zh:'深層清洗BB沖奶粉機、UV機', en:'Deep clean baby formula machine & UV steriliser'}, true],
+      ['15:45','16:00', {zh:'吸梳化(Rainbow機)', en:'Vacuum the sofa (Rainbow machine)'}, true],
+      ['16:00','17:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+      ['18:30','19:00', {zh:'晚餐後清潔廚房、餐具', en:'Clean kitchen and dishes after dinner'}, false],
+      ['19:00','19:30', {zh:'準備翌日早餐/午餐食材', en:"Prep next day's breakfast/lunch ingredients"}, true],
+      ['19:30','19:45', {zh:'切生果', en:'Cut fruit'}, true],
+      ['19:45','20:00', {zh:'洗碗', en:'Wash dishes'}, true],
+      ['20:00','20:15', {zh:'查詢太太、先生早餐/早上有無特別安排', en:"Check with wife & husband on breakfast/next morning's needs"}, true],
+      ['20:15','20:30', {zh:'彈性時間', en:'Flexible time'}, false],
+      ['20:30','20:45', {zh:'陪貓玩(15分鐘)', en:'Play with the cat (15 min)'}, true],
+      ['20:45','21:00', {zh:'沖涼', en:'Shower'}, false],
+    ]
+  },
+  {
+    key: 'wed', weekday: 3,
+    label: { zh: '三', en: 'Wed' },
+    sub: { zh: '洗白衫/晚餐', en: 'White wash / Dinner' },
+    title: { zh: '星期三 — 洗白色衫日 · 煮午餐 · 抽油煙機清潔', en: 'Wednesday — White laundry day · Cook lunch · Clean range hood' },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['07:20','08:00', {zh:'準備早餐、準備先生Lunch box', en:"Prepare breakfast; prepare husband's lunch box"}, true],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['08:30','09:30', {zh:'開抽濕機(客廳,最少4小時)', en:'Dehumidifier (living room, min 4hr)'}, true],
+      ['09:30','10:00', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['10:00','10:30', {zh:'廚房抽油煙深層清潔(固定,每週三)', en:'Deep clean the range hood (weekly, Wednesday)'}, true],
+      ['10:30','11:00', {zh:'一般家居清潔', en:'General house cleaning'}, false],
+      ['11:00','12:00', {zh:'準備午餐材料(三文魚同飯)', en:'Prep lunch ingredients (salmon & rice)'}, false],
+      ['12:00','13:00', {zh:'煮午餐並提供比孕婦、餐後清潔', en:'Cook and serve lunch; clean up after'}, false],
+      ['13:00','14:00', {zh:'放洗衣機(洗白色衫,洗+乾5小時,約18:00完成)', en:'Start washer — white clothes (wash+dry, 5 hrs, finishes ~6pm)'}, true],
+      ['14:00','15:30', {zh:'落街買生果', en:'Go out to buy fruit'}, true],
+      ['15:30','15:45', {zh:'淋花(先問先生)', en:'Water the plants (check with husband first)'}, false],
+      ['15:45','17:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+      ['19:00','19:30', {zh:'準備翌日早餐/午餐食材', en:"Prep next day's breakfast/lunch ingredients"}, true],
+      ['19:30','19:45', {zh:'切生果', en:'Cut fruit'}, true],
+      ['19:45','20:00', {zh:'洗碗', en:'Wash dishes'}, true],
+      ['20:00','20:15', {zh:'查詢太太、先生早餐/早上有無特別安排', en:"Check with wife & husband on breakfast/next morning's needs"}, true],
+      ['20:15','20:30', {zh:'取出洗衣機衣物、摺白色衫', en:'Take laundry out, fold white clothes'}, false],
+      ['20:30','20:45', {zh:'陪貓玩(15分鐘)', en:'Play with the cat (15 min)'}, true],
+      ['20:45','21:00', {zh:'沖涼', en:'Shower'}, false],
+    ]
+  },
+  {
+    key: 'thu', weekday: 4,
+    label: { zh: '四', en: 'Thu' },
+    sub: { zh: '洗黑衫/買餸', en: 'Black wash / Grocery' },
+    title: { zh: '星期四 — 洗黑色衫日 · 買餸日 · 煮晚餐', en: 'Thursday — Black laundry day · Grocery day · Cook dinner' },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['07:20','08:00', {zh:'準備早餐、準備先生Lunch box', en:"Prepare breakfast; prepare husband's lunch box"}, true],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['08:30','09:30', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['09:30','10:00', {zh:'開抽濕機(書房,視情況,最少4小時)', en:'Dehumidifier (study, as needed, min 4hr)'}, true],
+      ['10:00','11:00', {zh:'一般家居清潔、抹傢俬', en:'General cleaning, wipe down furniture'}, false],
+      ['11:00','12:00', {zh:'孕婦外出做運動,自行簡便午餐/處理家務', en:"She's out exercising — quick lunch for self / handle other chores"}, false],
+      ['12:00','13:00', {zh:'買餸', en:'Grocery shopping'}, false],
+      ['13:00','14:00', {zh:'放洗衣機(洗黑色衫,洗+乾5小時,約18:00完成)', en:'Start washer — black clothes (wash+dry, 5 hrs, finishes ~6pm)'}, true],
+      ['14:00','15:00', {zh:'準備晚餐材料', en:'Prep dinner ingredients'}, false],
+      ['15:00','15:30', {zh:'YouTube學習本地菜式', en:'YouTube — learn local dishes'}, false],
+      ['15:30','16:00', {zh:'家居整理', en:'Tidy up'}, false],
+      ['16:00','17:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+      ['17:00','18:30', {zh:'煮晚餐(比孕婦+老公,5點開始煮,6:30食晚飯)', en:'Cook dinner (start 5pm, dinner at 6:30pm)'}, false],
+      ['18:30','19:00', {zh:'晚餐後清潔廚房、餐具', en:'Clean kitchen and dishes after dinner'}, false],
+      ['19:00','19:30', {zh:'準備翌日早餐/午餐食材', en:"Prep next day's breakfast/lunch ingredients"}, true],
+      ['19:30','19:45', {zh:'切生果', en:'Cut fruit'}, true],
+      ['19:45','20:00', {zh:'洗碗', en:'Wash dishes'}, true],
+      ['20:00','20:15', {zh:'查詢太太、先生早餐/早上有無特別安排', en:"Check with wife & husband on breakfast/next morning's needs"}, true],
+      ['20:15','20:30', {zh:'取出洗衣機衣物、摺黑色衫', en:'Take laundry out, fold black clothes'}, false],
+      ['20:30','20:45', {zh:'陪貓玩(15分鐘)', en:'Play with the cat (15 min)'}, true],
+      ['20:45','21:00', {zh:'沖涼', en:'Shower'}, false],
+    ]
+  },
+  {
+    key: 'fri', weekday: 5,
+    label: { zh: '五', en: 'Fri' },
+    sub: { zh: '街市/飲水機', en: 'Market / Dispenser' },
+    title: { zh: '星期五 — 街市日 · 煮午餐 · 飲水機清潔 · 貓砂盆清洗週*', en: 'Friday — Market day · Cook lunch · Clean dispenser · Litter box deep-clean week*' },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['07:20','08:00', {zh:'準備早餐', en:'Prepare breakfast'}, false],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['08:30','09:30', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['09:30','10:00', {zh:'開抽濕機(視乎需要,最少4小時)', en:'Dehumidifier (as needed, min 4hr)'}, true],
+      ['10:00','11:00', {zh:'街市買菜(1小時)', en:'Grocery shopping at the market (1 hr)'}, false],
+      ['11:00','12:00', {zh:'準備午餐材料、煮午餐並提供比孕婦', en:'Prep, cook and serve lunch'}, false],
+      ['12:00','13:00', {zh:'Rainbow機吸全屋地氈', en:'Rainbow machine — carpet clean, whole home'}, true],
+      ['13:00','13:30', {zh:'餐後清潔', en:'Clean up after lunch'}, false],
+      ['13:30','14:30', {zh:'一般家居清潔/彈性家務', en:'General cleaning / flexible chores'}, false],
+      ['14:30','15:30', {zh:'貓砂盆徹底清洗(*每2週一次)', en:'Deep-clean litter box (*every 2 weeks)'}, true],
+      ['15:30','16:00', {zh:'YouTube學習本地菜式(下週菜單準備)', en:"YouTube — learn local dishes (planning next week's menu)"}, false],
+      ['16:00','16:15', {zh:'清潔Philips飲水機水箱(每週1次)', en:'Clean Philips water dispenser tank (weekly)'}, false],
+      ['16:15','16:30', {zh:'全屋整理,週末前檢查各房間', en:'Whole-house tidy-up, check all rooms before the weekend'}, false],
+      ['16:30','19:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+      ['19:00','19:30', {zh:'準備翌日早餐/午餐食材', en:"Prep next day's breakfast/lunch ingredients"}, true],
+      ['19:30','19:45', {zh:'切生果', en:'Cut fruit'}, true],
+      ['19:45','20:00', {zh:'洗碗', en:'Wash dishes'}, true],
+      ['20:00','20:15', {zh:'查詢太太、先生早餐/早上有無特別安排', en:"Check with wife & husband on breakfast/next morning's needs"}, true],
+      ['20:15','20:30', {zh:'彈性時間', en:'Flexible time'}, false],
+      ['20:30','20:45', {zh:'陪貓玩(15分鐘)', en:'Play with the cat (15 min)'}, true],
+      ['20:45','21:00', {zh:'沖涼', en:'Shower'}, false],
+    ]
+  },
+  {
+    key: 'sat', weekday: 6,
+    label: { zh: '六', en: 'Sat' },
+    sub: { zh: '熨衫', en: 'Ironing' },
+    title: { zh: '星期六 — 熨衫日', en: 'Saturday — Ironing day' },
+    note: { zh: '時間可按實際情況調整。', en: "Timing can be adjusted as needed." },
+    rows: [
+      ['07:00','07:20', {zh:'貓咪基本護理:換水、洗貓食碟、刷牙、清眼屎、剷屎尿', en:'Basic cat care: change water, wash food bowl, brush teeth, clean eyes, scoop litter'}, true],
+      ['08:00','08:30', {zh:'陪貓玩', en:'Play with the cat'}, true],
+      ['08:30','09:30', {zh:'全屋吸塵抹地、洗厠所', en:'Vacuum/mop whole home; clean toilets'}, true],
+      ['09:30','12:00', {zh:'熨衫(全屋衣物)', en:'Ironing (all clothes)'}, true],
+      ['12:00','15:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
+    ]
+  },
+];
+
+let currentLang = 'en';
+let activeDayKey = null;
+
+// ---- storage helpers (backed by a Cloudflare Pages Function which commits to a GitHub-hosted JSON db) ----
+const hasStorage = true; // every user shares the same GitHub-backed store, so this is always "available"
+const memoryStore = {}; // last-resort fallback if the network call fails
+
+async function storageGet(key, shared){
+  try{
+    const res = await fetch('/api/kv?key=' + encodeURIComponent(key));
+    if(!res.ok) return memoryStore[key] ?? null;
+    const body = await res.json();
+    return (body && 'value' in body) ? body.value : null;
+  }catch(e){ return memoryStore[key] ?? null; }
+}
+
+async function storageSet(key, value, shared){
+  memoryStore[key] = value; // optimistic local cache in case the write fails
+  try{
+    await fetch('/api/kv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value })
+    });
+  }catch(e){ /* value stays in memoryStore for this session; will sync on next successful write */ }
+}
+
+// ---- audit-trail logging (Supabase-backed, independent of the GitHub-backed store above) ----
+// Every completed/uncompleted checkbox tick is recorded as its own row in the `task_logs`
+// table, with day/type/action columns so the log modal can filter across full history.
+const SUPABASE_URL = 'https://mruawqrjtzwxwntuomqr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ydWF3cXJqdHp3eHdudHVvbXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NzMzMjcsImV4cCI6MjEwNTA0OTMyN30.g5IJxf5R-8F-Spnic-_UVR9e-CPJSgNqXJ4tCdtommI';
+
+async function logAuditEvent({ taskKey, dayKey, taskType, taskTextZh, taskTextEn, action }){
+  try{
+    await fetch(SUPABASE_URL + '/rest/v1/task_logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        task_key: taskKey,
+        day_key: dayKey,
+        task_type: taskType,
+        task_text_zh: taskTextZh || '',
+        task_text_en: taskTextEn || '',
+        action,
+        completed_date: todayISO(),
+        completed_at: new Date().toISOString()
+      })
+    });
+  }catch(e){ /* best-effort audit log; the GitHub-backed store above is unaffected either way */ }
+}
+
+async function fetchAuditLog(filters){
+  const params = new URLSearchParams();
+  params.set('select', '*');
+  params.set('order', 'completed_at.desc');
+  params.set('limit', '300');
+  if(filters.dayKey) params.set('day_key', 'eq.' + filters.dayKey);
+  if(filters.taskType) params.set('task_type', 'eq.' + filters.taskType);
+  if(filters.action) params.set('action', 'eq.' + filters.action);
+  if(filters.from) params.append('completed_date', 'gte.' + filters.from);
+  if(filters.to) params.append('completed_date', 'lte.' + filters.to);
+  try{
+    const res = await fetch(SUPABASE_URL + '/rest/v1/task_logs?' + params.toString(), {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+    });
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){ return []; }
+}
+
+function todayISO(){
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+let todayTasks = {}; // regular-task completion, tied to real today's date
+
+async function loadTodayTasks(){
+  const data = await storageGet('daylog:'+todayISO(), true);
+  todayTasks = (data && data.tasks) || {};
+}
+
+async function saveTodayTasks(){
+  await storageSet('daylog:'+todayISO(), { tasks: todayTasks }, true);
+}
+
+async function toggleTaskDone(taskKey){
+  const nowDone = !todayTasks[taskKey];
+  if(nowDone){ todayTasks[taskKey] = true; } else { delete todayTasks[taskKey]; }
+  await saveTodayTasks();
+
+  // figure out which log key to use — the AC-unit task logs separately per room
+  const [dKey, idxStr] = taskKey.split('-');
+  const idx = Number(idxStr);
+  const dayObj = DAYS.find(d=>d.key===dKey);
+  let logKey = 'tasklog:'+taskKey;
+  let auditTaskKey = taskKey;
+  let taskTextZh = '', taskTextEn = '';
+  if(dayObj){
+    const row = displayRows(dayObj)[idx];
+    if(row){
+      taskTextZh = (row[2] && row[2].zh) || '';
+      taskTextEn = (row[2] && row[2].en) || '';
+      if(isACTask(row[2])){
+        const room = acRoomForDay(dayObj);
+        logKey = 'tasklog:'+taskKey+'-'+room.en; // room.en used as a stable key, independent of display language
+        auditTaskKey = taskKey+'-'+room.en;
+        taskTextZh += ' — ' + room.zh;
+        taskTextEn += ' — ' + room.en;
+      }
+    }
+  }
+
+  // update per-task log (dedup by date, keep last 30) — kept as-is for backward compatibility
+  let log = (await storageGet(logKey, true)) || [];
+  const iso = todayISO();
+  if(nowDone){
+    if(!log.includes(iso)) log.push(iso);
+  } else {
+    log = log.filter(d => d !== iso);
+  }
+  log = log.slice(-30);
+  await storageSet(logKey, log, true);
+
+  // record a full, filterable audit-trail event in Supabase
+  logAuditEvent({
+    taskKey: auditTaskKey,
+    dayKey: dKey,
+    taskType: 'regular',
+    taskTextZh, taskTextEn,
+    action: nowDone ? 'completed' : 'uncompleted'
+  });
+
+  renderDay(activeDayKey);
+}
+
+// ---- ad-hoc tasks: one list per weekday (not tied to a specific calendar date) ----
+const adhocCache = {}; // dayKey -> array of {id, text, done}
+
+async function loadAdhocForDay(dayKey){
+  if(adhocCache[dayKey]) return adhocCache[dayKey];
+  const data = await storageGet('adhoc:'+dayKey, true);
+  adhocCache[dayKey] = data || [];
+  return adhocCache[dayKey];
+}
+
+async function saveAdhocForDay(dayKey){
+  await storageSet('adhoc:'+dayKey, adhocCache[dayKey] || [], true);
+}
+
+async function addAdhocTask(dayKey, text, time){
+  if(!text.trim()) return;
+  if(!adhocCache[dayKey]) adhocCache[dayKey] = [];
+  adhocCache[dayKey].push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), text: text.trim(), time: time || '', done: false });
+  adhocCache[dayKey].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+  await saveAdhocForDay(dayKey);
+  renderAdhoc();
+  if(dayKey === activeDayKey) renderTimeline();
+}
+
+async function toggleAdhocDone(dayKey, id){
+  const item = (adhocCache[dayKey]||[]).find(a=>a.id===id);
+  if(item){
+    item.done = !item.done;
+    await saveAdhocForDay(dayKey);
+    logAuditEvent({
+      taskKey: dayKey+'-adhoc-'+id,
+      dayKey: dayKey,
+      taskType: 'adhoc',
+      taskTextZh: item.text, taskTextEn: item.text,
+      action: item.done ? 'completed' : 'uncompleted'
+    });
+    renderAdhoc(); if(dayKey === activeDayKey) renderTimeline();
+  }
+}
+
+async function deleteAdhocTask(dayKey, id){
+  adhocCache[dayKey] = (adhocCache[dayKey]||[]).filter(a=>a.id!==id);
+  await saveAdhocForDay(dayKey);
+  renderAdhoc();
+  if(dayKey === activeDayKey) renderTimeline();
+}
+
+// ---- schedule overrides: per-day customized task rows (Ma'am & Sir mode edits) ----
+const overrideCache = {}; // dayKey -> array of rows, or null if not yet loaded
+
+async function loadOverrideForDay(dayKey){
+  if(overrideCache[dayKey] !== undefined) return overrideCache[dayKey];
+  const data = await storageGet('schedule-override:'+dayKey, true);
+  overrideCache[dayKey] = data || null;
+  return overrideCache[dayKey];
+}
+
+async function saveOverrideForDay(dayKey, rows){
+  overrideCache[dayKey] = rows;
+  await storageSet('schedule-override:'+dayKey, rows, true);
+}
+
+function effectiveRows(day){
+  return overrideCache[day.key] || day.rows;
+}
+
+let currentMode = 'vanessa'; // 'mgmt' (Ma'am & Sir) or 'vanessa'
+let currentView = 'todo'; // default landing tab
+let editingIdx = null; // row index being edited inside the Edit Master List modal
+let instanceEditingIdx = null; // row index being edited inline on the main view (this-week-only)
+
+function toMinutes(t){ const [h,m] = t.split(':').map(Number); return h*60+m; }
+function addMinutes(t, mins){
+  const total = toMinutes(t) + mins;
+  const h = Math.floor(total/60) % 24;
+  const m = total % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+// ---- current-week date helpers (this view shows the upcoming/current Mon–Sat) ----
+function getMondayOfCurrentWeek(){
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? 1 : 1 - day;
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+  return monday;
+}
+
+function dateForWeekday(weekday){ // weekday: 1=Mon..6=Sat
+  const monday = getMondayOfCurrentWeek();
+  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + (weekday - 1));
+}
+
+function formatShortDate(d){
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+function weekRangeLabel(){
+  const mon = dateForWeekday(1);
+  const sat = dateForWeekday(6);
+  return `${formatShortDate(mon)} – ${formatShortDate(sat)}`;
+}
+
+// ---- AC unit cleaning rotation: master bedroom -> study -> baby room -> living room, one per week ----
+const AC_ROOMS = [
+  { zh: '主人房', en: 'Master bedroom' },
+  { zh: '書房', en: 'Study' },
+  { zh: 'BB房', en: 'Baby room' },
+  { zh: '客廳', en: 'Living room' },
+];
+const AC_ROTATION_ANCHOR = new Date(2026, 8, 14); // a Monday; week of this date = 主人房 (index 0)
+
+function isACTask(task){
+  return !!(task && task.zh && task.zh.includes('洗一部冷氣'));
+}
+
+function acRoomIndexForMonday(mondayDate){
+  const msPerWeek = 7*24*60*60*1000;
+  const weeks = Math.round((mondayDate - AC_ROTATION_ANCHOR) / msPerWeek);
+  return ((weeks % 4) + 4) % 4;
+}
+
+function acRoomForDay(day){
+  const monday = dateForWeekday(1);
+  return AC_ROOMS[acRoomIndexForMonday(monday)];
+}
+
+function isoDateForWeekday(weekday){
+  const d = dateForWeekday(weekday);
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+// ---- this-week-only overrides: edits tied to one specific date, separate from the master list ----
+const instanceCache = {}; // isoDate -> array of rows, or null if not yet loaded/none set
+
+async function loadInstanceForDay(day){
+  const iso = isoDateForWeekday(day.weekday);
+  if(instanceCache[iso] !== undefined) return instanceCache[iso];
+  const data = await storageGet('week-instance:'+iso, true);
+  instanceCache[iso] = data || null;
+  return instanceCache[iso];
+}
+
+async function saveInstanceForDay(day, rows){
+  const iso = isoDateForWeekday(day.weekday);
+  instanceCache[iso] = rows;
+  await storageSet('week-instance:'+iso, rows, true);
+}
+
+async function clearInstanceForDay(day){
+  const iso = isoDateForWeekday(day.weekday);
+  instanceCache[iso] = null;
+  await storageSet('week-instance:'+iso, null, true);
+}
+
+// what's actually shown/ticked for this week: a this-week-only edit takes priority over the master list
+function displayRows(day){
+  const iso = isoDateForWeekday(day.weekday);
+  return instanceCache[iso] || effectiveRows(day);
+}
+
+function hasInstanceOverride(day){
+  const iso = isoDateForWeekday(day.weekday);
+  return !!instanceCache[iso];
+}
+
+function renderHeader(){
+  document.getElementById('pageTitle').textContent = STRINGS[currentLang].title;
+  document.getElementById('pageSub').textContent = STRINGS[currentLang].sub;
+  document.getElementById('weekRange').textContent = STRINGS[currentLang].weekRangeText(weekRangeLabel());
+  document.getElementById('footPin').textContent = STRINGS[currentLang].footPin;
+  document.getElementById('footNote').textContent = STRINGS[currentLang].footNote;
+  document.getElementById('logBtnLabel').textContent = STRINGS[currentLang].logBtnLabel;
+  document.getElementById('modeMgmtLabel').textContent = STRINGS[currentLang].modeMgmt;
+  document.getElementById('modeVanessaLabel').textContent = STRINGS[currentLang].modeVanessa;
+  document.getElementById('modeBanner').textContent = currentMode === 'mgmt' ? STRINGS[currentLang].modeBannerMgmt : STRINGS[currentLang].modeBannerVanessa;
+  document.querySelectorAll('#modeSwitch button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode === currentMode);
+  });
+  document.getElementById('viewTimetableLabel').textContent = STRINGS[currentLang].viewTimetableLabel;
+  document.getElementById('viewSummaryLabel').textContent = STRINGS[currentLang].viewSummaryLabel;
+  document.getElementById('viewTodoLabel').textContent = STRINGS[currentLang].viewTodoLabel;
+  document.getElementById('summaryHeading').textContent = STRINGS[currentLang].summaryHeading;
+  document.getElementById('todoHeading').textContent = STRINGS[currentLang].todoHeading;
+  document.querySelectorAll('#viewSwitch button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view === currentView);
+  });
+  document.getElementById('timetableView').style.display = currentView === 'timetable' ? 'block' : 'none';
+  document.getElementById('summaryView').style.display = currentView === 'summary' ? 'block' : 'none';
+  document.getElementById('todoView').style.display = currentView === 'todo' ? 'block' : 'none';
+  document.getElementById('adhocInput').placeholder = STRINGS[currentLang].adhocPlaceholder;
+  document.getElementById('adhocHint').textContent = STRINGS[currentLang].adhocHint;
+  document.getElementById('adhocAddBtn').textContent = STRINGS[currentLang].adhocAdd;
+  document.getElementById('addTaskLabel').textContent = STRINGS[currentLang].addTaskLabel;
+  document.getElementById('addTaskBtn').style.display = currentMode === 'mgmt' ? 'block' : 'none';
+  document.getElementById('instanceHint').textContent = STRINGS[currentLang].instanceHint;
+  document.getElementById('instanceHint').style.display = currentMode === 'mgmt' ? 'block' : 'none';
+  document.getElementById('resetInstanceBtn').textContent = STRINGS[currentLang].resetInstanceBtn;
+  document.getElementById('adhocForm').style.display = currentMode === 'mgmt' ? 'flex' : 'none';
+  document.querySelectorAll('#langSwitch button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.lang === currentLang);
+  });
+  document.documentElement.lang = currentLang === 'zh' ? 'zh-Hant' : 'en';
+}
+
+function renderNotes(){
+  const el = document.getElementById('notes');
+  el.innerHTML = NOTES.map(n => {
+    const [label, val] = n[currentLang];
+    return `<div class="note"><b>${label}</b>${val}</div>`;
+  }).join('');
+}
+
+function renderAdhoc(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  document.getElementById('adhocTitle').textContent = STRINGS[currentLang].adhocTitle(day.label[currentLang]);
+
+  const list = (adhocCache[activeDayKey] || []).filter(item => !item.time);
+  const el = document.getElementById('adhocList');
+  if(list.length === 0){
+    el.innerHTML = `<li class="adhoc-empty">${STRINGS[currentLang].adhocEmpty}</li>`;
+    return;
+  }
+  const showDelete = currentMode === 'mgmt';
+  el.innerHTML = list.map(item => `
+    <li class="${item.done?'done':''}">
+      <input type="checkbox" ${item.done?'checked':''} ${currentMode==='mgmt'?'disabled':''} data-adhoc-id="${item.id}">
+      <span class="adhoc-text">${item.text}</span>
+      ${showDelete ? `<button class="del-btn" data-del-id="${item.id}" aria-label="${STRINGS[currentLang].delAria}">✕</button>` : ''}
+    </li>
+  `).join('');
+  el.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener('change', ()=> toggleAdhocDone(activeDayKey, cb.dataset.adhocId));
+  });
+  el.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> deleteAdhocTask(activeDayKey, btn.dataset.delId));
+  });
+}
+
+function renderTabs(activeKey){
+  const el = document.getElementById('tabs');
+  const now = new Date();
+  const todayWeekday = now.getDay();
+  el.innerHTML = DAYS.map(d => `
+    <button class="tab ${d.key===activeKey?'active':''} ${d.weekday===todayWeekday?'is-today':''}" data-key="${d.key}">
+      ${d.label[currentLang]} <span class="tab-date">${formatShortDate(dateForWeekday(d.weekday))}</span><span class="sub">${d.sub[currentLang]}</span>
+    </button>
+  `).join('');
+  el.querySelectorAll('.tab').forEach(btn=>{
+    btn.addEventListener('click', ()=> renderDay(btn.dataset.key));
+  });
+}
+
+async function renderDay(key){
+  activeDayKey = key;
+  editingIdx = null;
+  instanceEditingIdx = null;
+  const day = DAYS.find(d=>d.key===key);
+  renderTabs(key);
+  document.getElementById('panelTitle').textContent = day.title[currentLang];
+
+  const noteEl = document.getElementById('panelNote');
+  if(day.note){
+    noteEl.textContent = day.note[currentLang];
+    noteEl.style.display = 'block';
+  } else {
+    noteEl.style.display = 'none';
+  }
+
+  await Promise.all([loadOverrideForDay(key), loadInstanceForDay(day), loadAdhocForDay(key)]);
+  renderTimeline();
+  if(activeDayKey === key) renderAdhoc();
+}
+
+function renderTimeline(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = displayRows(day);
+  const now = new Date();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const isToday = now.getDay() === day.weekday;
+  const isMgmt = currentMode === 'mgmt';
+
+  const list = document.getElementById('timeline');
+  list.classList.toggle('mode-mgmt', isMgmt);
+
+  // merge regular rows with any ad-hoc tasks that have a specific time set
+  const adhocTimed = (adhocCache[day.key] || []).filter(a => a.time);
+  const merged = [
+    ...rows.map((r, idx) => ({ kind:'regular', origIdx: idx, start: r[0], end: r[1], task: r[2], fixed: r[3] })),
+    ...adhocTimed.map(a => ({ kind:'adhoc', item: a, start: a.time, end: addMinutes(a.time, 15) })),
+  ].sort((a,b) => toMinutes(a.start) - toMinutes(b.start));
+
+  list.innerHTML = merged.map(m => {
+    if(m.kind === 'regular'){
+      const idx = m.origIdx;
+      if(isMgmt && instanceEditingIdx === idx) return renderEditForm(idx, rows[idx], true);
+
+      const {start,end,task,fixed} = m;
+      const isNow = isToday && nowMin >= toMinutes(start) && nowMin < toMinutes(end);
+      const taskKey = day.key+'-'+idx;
+      const isDone = isToday && !!todayTasks[taskKey];
+      const pin = fixed ? '📌 ' : '';
+      const acSuffix = isACTask(task) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
+
+      const leftCell = isMgmt
+        ? `<span class="row-actions">
+             <button class="edit-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].editBtn}">✏️</button>
+             <button class="delrow-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].delBtn}">✕</button>
+           </span>`
+        : `<span class="check"><input type="checkbox" ${isDone?'checked':''} ${isToday?'':'disabled'} data-taskkey="${taskKey}"></span>`;
+
+      return `
+        <li class="row ${fixed?'fixed':''} ${isNow?'is-now':''} ${isDone?'done':''}">
+          ${leftCell}
+          <span class="time">${start}–${end}</span>
+          <span class="task">${pin}${task[currentLang]}${acSuffix}${isNow?`<span class="now-tag"><span class="now-dot"></span>${STRINGS[currentLang].now}</span>`:''}</span>
+        </li>
+      `;
+    } else {
+      // ad-hoc task merged into the timeline
+      const item = m.item;
+      const isNow = isToday && nowMin >= toMinutes(m.start) && nowMin < toMinutes(m.end);
+      const leftCell = isMgmt
+        ? `<span class="row-actions"><button class="del-adhoc-inline" data-id="${item.id}" aria-label="${STRINGS[currentLang].delAria}">✕</button></span>`
+        : `<span class="check"><input type="checkbox" ${item.done?'checked':''} data-adhoc-inline-id="${item.id}"></span>`;
+      return `
+        <li class="row adhoc-row ${isNow?'is-now':''} ${item.done?'done':''}">
+          ${leftCell}
+          <span class="time">${m.start}–${m.end}</span>
+          <span class="task">📝 ${item.text}${isNow?`<span class="now-tag"><span class="now-dot"></span>${STRINGS[currentLang].now}</span>`:''}</span>
+        </li>
+      `;
+    }
+  }).join('') + (isMgmt && instanceEditingIdx === rows.length ? renderEditForm(rows.length, null, true) : '');
+
+  if(!isMgmt){
+    list.querySelectorAll('input[type=checkbox][data-taskkey]').forEach(cb=>{
+      cb.addEventListener('change', ()=> toggleTaskDone(cb.dataset.taskkey));
+    });
+    list.querySelectorAll('input[type=checkbox][data-adhoc-inline-id]').forEach(cb=>{
+      cb.addEventListener('change', ()=> toggleAdhocDone(day.key, cb.dataset.adhocInlineId));
+    });
+  } else {
+    list.querySelectorAll('.edit-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ instanceEditingIdx = Number(btn.dataset.idx); renderTimeline(); });
+    });
+    list.querySelectorAll('.delrow-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=> deleteInstanceRow(Number(btn.dataset.idx)));
+    });
+    list.querySelectorAll('.del-adhoc-inline').forEach(btn=>{
+      btn.addEventListener('click', ()=> deleteAdhocTask(day.key, btn.dataset.id));
+    });
+    wireInstanceEditForm();
+  }
+
+  const resetBtn = document.getElementById('resetInstanceBtn');
+  if(resetBtn) resetBtn.style.display = (isMgmt && hasInstanceOverride(day)) ? 'inline-block' : 'none';
+}
+
+function renderEditForm(idx, row){
+  const [start,end,task,fixed] = row || ['09:00','10:00',{zh:'',en:''},false];
+  return `
+    <li class="edit-row" data-editidx="${idx}">
+      <div class="edit-times">
+        <label style="display:block;font-size:0.72rem;color:var(--ink-soft);">${STRINGS[currentLang].formStart}
+          <input type="time" id="editStart" value="${start}">
+        </label>
+        <label style="display:block;font-size:0.72rem;color:var(--ink-soft);">${STRINGS[currentLang].formEnd}
+          <input type="time" id="editEnd" value="${end}">
+        </label>
+      </div>
+      <div class="edit-text-row">
+        <input type="text" id="editTaskZh" placeholder="${STRINGS[currentLang].formTaskZh}" value="${(task.zh||'').replace(/"/g,'&quot;')}">
+        <input type="text" id="editTaskEn" placeholder="${STRINGS[currentLang].formTaskEn}" value="${(task.en||'').replace(/"/g,'&quot;')}">
+      </div>
+      <label class="fixed-toggle">
+        <input type="checkbox" id="editFixed" ${fixed?'checked':''}> ${STRINGS[currentLang].formFixed}
+      </label>
+      <div class="edit-actions">
+        <button class="cancel-btn" id="editCancelBtn">${STRINGS[currentLang].cancelBtn}</button>
+        <button class="save-btn" id="editSaveBtn">${STRINGS[currentLang].saveBtn}</button>
+      </div>
+    </li>
+  `;
+}
+
+function wireEditForm(){
+  const saveBtn = document.getElementById('editSaveBtn');
+  const cancelBtn = document.getElementById('editCancelBtn');
+  if(saveBtn) saveBtn.addEventListener('click', saveEditForm);
+  if(cancelBtn) cancelBtn.addEventListener('click', ()=>{ editingIdx = null; renderEditModalList(); });
+}
+
+// ---- edit master list modal ----
+function renderEditModalList(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = effectiveRows(day);
+
+  const list = document.getElementById('editTimeline');
+  list.innerHTML = rows.map((r, idx)=>{
+    if(editingIdx === idx) return renderEditForm(idx, r);
+
+    const [start,end,task,fixed] = r;
+    const pin = fixed ? '📌 ' : '';
+    return `
+      <li class="row ${fixed?'fixed':''}">
+        <span class="row-actions">
+          <button class="edit-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].editBtn}">✏️</button>
+          <button class="delrow-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].delBtn}">✕</button>
+        </span>
+        <span class="time">${start}–${end}</span>
+        <span class="task">${pin}${task[currentLang]}</span>
+      </li>
+    `;
+  }).join('') + (editingIdx === rows.length ? renderEditForm(rows.length, null) : '');
+
+  list.querySelectorAll('.edit-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ editingIdx = Number(btn.dataset.idx); renderEditModalList(); });
+  });
+  list.querySelectorAll('.delrow-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> deleteTaskRow(Number(btn.dataset.idx)));
+  });
+  wireEditForm();
+}
+
+function openEditModal(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  editingIdx = null;
+  instanceEditingIdx = null;
+  renderTimeline();
+  document.getElementById('editModalTitle').textContent = STRINGS[currentLang].addTaskLabel;
+  document.getElementById('editModalSub').textContent = day.title[currentLang];
+  document.getElementById('modalAddTaskLabel').textContent = STRINGS[currentLang].addTaskRowLabel;
+  renderEditModalList();
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeEditModal(){
+  editingIdx = null;
+  document.getElementById('editModal').classList.remove('open');
+  renderTimeline(); // reflect any changes on the main (read-only) view
+}
+
+async function saveEditForm(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = effectiveRows(day).slice(); // copy
+  const start = document.getElementById('editStart').value;
+  const end = document.getElementById('editEnd').value;
+  const zh = document.getElementById('editTaskZh').value.trim();
+  const en = document.getElementById('editTaskEn').value.trim();
+  const fixed = document.getElementById('editFixed').checked;
+  if(!start || !end || (!zh && !en)) return;
+
+  const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
+  if(editingIdx < rows.length){
+    rows[editingIdx] = newRow;
+  } else {
+    rows.push(newRow);
+  }
+  // keep the list ordered by start time so a new/edited task lands in its correct slot
+  rows.sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
+
+  await saveOverrideForDay(day.key, rows);
+  editingIdx = null;
+  renderEditModalList();
+}
+
+async function deleteTaskRow(idx){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = effectiveRows(day).slice();
+  rows.splice(idx, 1);
+  await saveOverrideForDay(day.key, rows);
+  renderEditModalList();
+}
+
+// ---- this-week-only inline editing on the main view (does NOT touch the master list) ----
+function wireInstanceEditForm(){
+  const saveBtn = document.getElementById('editSaveBtn');
+  const cancelBtn = document.getElementById('editCancelBtn');
+  if(saveBtn) saveBtn.addEventListener('click', saveInstanceEdit);
+  if(cancelBtn) cancelBtn.addEventListener('click', ()=>{ instanceEditingIdx = null; renderTimeline(); });
+}
+
+async function saveInstanceEdit(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = displayRows(day).slice(); // start from whatever's currently shown (instance override or master)
+  const start = document.getElementById('editStart').value;
+  const end = document.getElementById('editEnd').value;
+  const zh = document.getElementById('editTaskZh').value.trim();
+  const en = document.getElementById('editTaskEn').value.trim();
+  const fixed = document.getElementById('editFixed').checked;
+  if(!start || !end || (!zh && !en)) return;
+
+  const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
+  if(instanceEditingIdx < rows.length){
+    rows[instanceEditingIdx] = newRow;
+  } else {
+    rows.push(newRow);
+  }
+  rows.sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
+
+  await saveInstanceForDay(day, rows);
+  instanceEditingIdx = null;
+  renderTimeline();
+}
+
+async function deleteInstanceRow(idx){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  const rows = displayRows(day).slice();
+  rows.splice(idx, 1);
+  await saveInstanceForDay(day, rows);
+  renderTimeline();
+}
+
+async function resetInstanceToMaster(){
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  await clearInstanceForDay(day);
+  instanceEditingIdx = null;
+  renderTimeline();
+}
+
+function setLang(lang){
+  currentLang = lang;
+  renderHeader();
+  renderNotes();
+  renderDay(activeDayKey);
+  if(currentView === 'todo') renderTodo();
+}
+
+function setMode(mode){
+  currentMode = mode;
+  editingIdx = null;
+  renderHeader();
+  renderTimeline();
+  renderAdhoc();
+  if(currentView === 'todo') renderTodo();
+}
+
+async function renderTodo(){
+  await Promise.all(DAYS.map(d => Promise.all([loadOverrideForDay(d.key), loadInstanceForDay(d)])));
+  const now = new Date();
+  const todayWeekday = now.getDay();
+  const isVanessa = currentMode !== 'mgmt';
+  const el = document.getElementById('todoDays');
+  el.innerHTML = DAYS.map(day => {
+    // keep original row index (matches the taskKey used by the main timeline) so ticking here
+    // stays in sync with ticking on the Timetable tab
+    const entries = displayRows(day)
+      .map((r, idx) => ({ r, idx }))
+      .filter(x => x.r[3]);
+    const isToday = day.weekday === todayWeekday;
+    const tasksHtml = entries.length
+      ? `<ul class="todo-tasks">${entries.map(({r, idx}) => {
+          const acSuffix = isACTask(r[2]) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
+          const taskKey = day.key+'-'+idx;
+          const isDone = isToday && !!todayTasks[taskKey];
+          if(isVanessa){
+            return `<li class="${isDone?'done':''}">
+              <input type="checkbox" ${isDone?'checked':''} ${isToday?'':'disabled'} data-taskkey="${taskKey}">
+              <span class="todo-text">${r[2][currentLang]}${acSuffix}</span>
+            </li>`;
+          }
+          return `<li>📌 ${r[2][currentLang]}${acSuffix}</li>`;
+        }).join('')}</ul>`
+      : `<p class="todo-empty">${STRINGS[currentLang].todoEmpty}</p>`;
+    return `<div class="todo-day"><h3>${day.title[currentLang]}</h3>${tasksHtml}</div>`;
+  }).join('');
+
+  if(isVanessa){
+    el.querySelectorAll('input[type=checkbox][data-taskkey]').forEach(cb=>{
+      cb.addEventListener('change', async ()=>{
+        await toggleTaskDone(cb.dataset.taskkey);
+        renderTodo();
+      });
+    });
+  }
+}
+
+async function setView(view){
+  currentView = view;
+  renderHeader();
+  if(view === 'todo') renderTodo();
+}
+
+document.getElementById('langSwitch').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  setLang(btn.dataset.lang);
+});
+
+document.getElementById('modeSwitch').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  setMode(btn.dataset.mode);
+});
+
+document.getElementById('viewSwitch').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  setView(btn.dataset.view);
+});
+
+document.getElementById('addTaskBtn').addEventListener('click', openEditModal);
+document.getElementById('resetInstanceBtn').addEventListener('click', resetInstanceToMaster);
+
+document.getElementById('editModalClose').addEventListener('click', closeEditModal);
+document.getElementById('editModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'editModal') closeEditModal();
+});
+document.getElementById('modalAddTaskBtn').addEventListener('click', ()=>{
+  const day = DAYS.find(d=>d.key===activeDayKey);
+  editingIdx = effectiveRows(day).length;
+  renderEditModalList();
+});
+
+document.getElementById('adhocAddBtn').addEventListener('click', ()=>{
+  const input = document.getElementById('adhocInput');
+  const timeInput = document.getElementById('adhocTimeInput');
+  addAdhocTask(activeDayKey, input.value, timeInput.value);
+  input.value = '';
+  timeInput.value = '';
+});
+document.getElementById('adhocInput').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter'){
+    const timeInput = document.getElementById('adhocTimeInput');
+    addAdhocTask(activeDayKey, e.target.value, timeInput.value);
+    e.target.value = '';
+    timeInput.value = '';
+  }
+});
+
+// ---- log modal (Supabase-backed audit trail, filterable by day/type/action/date range) ----
+function populateLogFilterOptions(){
+  const daySel = document.getElementById('logFilterDay');
+  daySel.innerHTML = `<option value="">${STRINGS[currentLang].logFilterAllDays}</option>` +
+    DAYS.map(d=>`<option value="${d.key}">${d.label[currentLang]}</option>`).join('');
+  daySel.value = activeDayKey || '';
+
+  document.getElementById('logFilterType').innerHTML = `
+    <option value="">${STRINGS[currentLang].logFilterAllTypes}</option>
+    <option value="regular">${STRINGS[currentLang].logFilterRegular}</option>
+    <option value="adhoc">${STRINGS[currentLang].logFilterAdhoc}</option>
+  `;
+
+  document.getElementById('logFilterAction').innerHTML = `
+    <option value="">${STRINGS[currentLang].logFilterAllActions}</option>
+    <option value="completed">${STRINGS[currentLang].logActionCompleted}</option>
+    <option value="uncompleted">${STRINGS[currentLang].logActionUncompleted}</option>
+  `;
+
+  document.getElementById('logFilterBtn').textContent = STRINGS[currentLang].logFilterApply;
+}
+
+async function runLogFilter(){
+  const body = document.getElementById('logModalBody');
+  body.innerHTML = `<div class="log-loading">${STRINGS[currentLang].loading}</div>`;
+
+  const filters = {
+    dayKey: document.getElementById('logFilterDay').value,
+    taskType: document.getElementById('logFilterType').value,
+    action: document.getElementById('logFilterAction').value,
+    from: document.getElementById('logFilterFrom').value,
+    to: document.getElementById('logFilterTo').value,
+  };
+  const rows = await fetchAuditLog(filters);
+
+  if(!rows.length){
+    body.innerHTML = `<div class="log-loading">${STRINGS[currentLang].logFilterEmpty}</div>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(r => {
+    const taskText = currentLang === 'zh' ? (r.task_text_zh || r.task_text_en) : (r.task_text_en || r.task_text_zh);
+    const dayObj = DAYS.find(d=>d.key===r.day_key);
+    const dLabel = dayObj ? dayObj.label[currentLang] : r.day_key;
+    const actionCls = r.action === 'completed' ? 'lt-action-completed' : 'lt-action-uncompleted';
+    const actionLabel = r.action === 'completed' ? STRINGS[currentLang].logActionCompleted : STRINGS[currentLang].logActionUncompleted;
+    const when = new Date(r.completed_at).toLocaleString(currentLang==='zh' ? 'zh-HK' : 'en-US', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+    return `
+      <div class="log-item">
+        <div class="lt-task">${taskText || r.task_key}</div>
+        <div class="lt-meta">${dLabel} · <span class="${actionCls}">${actionLabel}</span> · ${when}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openLogModal(){
+  const modal = document.getElementById('logModal');
+  document.getElementById('logModalTitle').textContent = STRINGS[currentLang].logModalTitle;
+  document.getElementById('logModalSub').textContent = STRINGS[currentLang].logModalSubAudit;
+  populateLogFilterOptions();
+  modal.classList.add('open');
+  await runLogFilter();
+}
+
+document.getElementById('logFilterBtn').addEventListener('click', runLogFilter);
+document.getElementById('logBtn').addEventListener('click', openLogModal);
+document.getElementById('logModalClose').addEventListener('click', ()=>{
+  document.getElementById('logModal').classList.remove('open');
+});
+document.getElementById('logModal').addEventListener('click', (e)=>{
+  if(e.target.id === 'logModal') document.getElementById('logModal').classList.remove('open');
+});
+async function init(){
+  renderHeader();
+  renderNotes();
+  await loadTodayTasks();
+  const todayIdx = new Date().getDay();
+  const defaultDay = DAYS.find(d=>d.weekday===todayIdx) || DAYS[0];
+  renderDay(defaultDay.key);
+  if(currentView === 'todo') renderTodo();
+}
+init();
+
+setInterval(()=>{ if(activeDayKey) renderDay(activeDayKey); }, 60000);
+
+</script>
+</body>
+</html>
