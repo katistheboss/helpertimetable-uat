@@ -104,6 +104,10 @@
   .todo-actions button:hover{ color: var(--clay); background: var(--sage-soft); }
   .todo-tasks li.edit-row{ display:flex; flex-direction:column; align-items:stretch; border-bottom:none; font-size:0.9rem; }
   .todo-day .add-task-btn{ margin-top: 8px; padding: 10px; }
+  .todo-week-note{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;
+    margin-top: 8px; font-size: 0.76rem; color: var(--ink-soft); font-style: italic; }
+  .todo-restore{ border:1px solid var(--line); background: transparent; border-radius: 6px; padding: 6px 10px;
+    font-size: 0.76rem; color: var(--clay); cursor:pointer; font-style: normal; min-height: 32px; }
   .todo-adhoc{ margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
   .todo-adhoc h4{ margin: 0 0 6px; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); }
   .todo-adhoc .adhoc-form{ margin: 8px 0 0; }
@@ -532,7 +536,7 @@ const STRINGS = {
     modeVanessa: 'Vanessa',
     modeBannerMgmt: '👫 太太先生模式 — 編輯嘅係總時間表(適用所有未來每星期,唔止呢一週)',
     modeBannerVanessa: '🧹 Vanessa模式 — 可以打剔已完成嘅工作(呢個顯示緊呢一週)',
-    weekRangeText: (range)=>`顯示緊呢一週:${range}`,
+    weekRangeText: (range)=>`顯示緊未來 7 日:${range}`,
     editBtn: '編輯',
     delBtn: '刪除',
     addTaskLabel: '編輯總時間表',
@@ -554,7 +558,10 @@ const STRINGS = {
     todoAdhocHeading: '📝 臨時工作',
     todoAddRegular: '新增固定工作',
     todoFormMissing: '請填寫開始/結束時間同工作內容',
-    todoConfirmDelete: (t)=>`確定刪除「${t}」？`,
+    todoConfirmDelete: (t, d)=>`只係刪除 ${d} 嗰日嘅「${t}」?\n之後嘅星期會照常出返。`,
+    todoConfirmRestore: (d)=>`將 ${d} 還原返原本嘅固定工作?`,
+    todoRestoreWeek: '↺ 還原',
+    todoWeekOnlyNote: (d)=>`${d} 有一次性改動`,
     instanceHint: '✏️ 喺呢度編輯只改呢一週,唔會影響總時間表',
     resetInstanceBtn: '↺ 還原返總時間表(呢一週)',
     logModalSubAudit: '工作完成記錄 — 可用下面篩選器查看指定日子/類型/日期範圍',
@@ -594,7 +601,7 @@ const STRINGS = {
     modeVanessa: 'Vanessa',
     modeBannerMgmt: "👫 Ma'am & Sir mode — editing the master schedule (applies to every future week, not just this one)",
     modeBannerVanessa: "🧹 Vanessa mode — tick off tasks as they're completed (showing this week)",
-    weekRangeText: (range)=>`Showing this week: ${range}`,
+    weekRangeText: (range)=>`Showing the coming 7 days: ${range}`,
     editBtn: 'Edit',
     delBtn: 'Delete',
     addTaskLabel: 'Edit Master List',
@@ -616,7 +623,10 @@ const STRINGS = {
     todoAdhocHeading: '📝 Ad-hoc tasks',
     todoAddRegular: 'Add regular task',
     todoFormMissing: 'Please fill in start/end time and the task',
-    todoConfirmDelete: (t)=>`Delete "${t}"?`,
+    todoConfirmDelete: (t, d)=>`Remove "${t}" for ${d} only?\nIt will come back the following week.`,
+    todoConfirmRestore: (d)=>`Restore the regular tasks for ${d}?`,
+    todoRestoreWeek: '↺ Restore',
+    todoWeekOnlyNote: (d)=>`One-off changes for ${d}`,
     instanceHint: '✏️ Editing here only changes this week — the master list is unaffected',
     resetInstanceBtn: '↺ Reset this week to master list',
     logModalSubAudit: 'Task completion history — use the filters below to narrow by day, type, or date range',
@@ -1108,10 +1118,13 @@ function getMondayOfCurrentWeek(){
   return monday;
 }
 
-function dateForWeekday(weekday){ // weekday: 1=Mon..6=Sat, 0=Sun (end of week)
-  const monday = getMondayOfCurrentWeek();
-  const offset = weekday === 0 ? 6 : weekday - 1;
-  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + offset);
+// "Coming week": each weekday maps to its next occurrence, counting today.
+// e.g. on a Wednesday, Wed = today, Fri = this Friday, Mon = next Monday.
+// So this-week-only changes (like deleting a task) always hit the upcoming day, never a past one.
+function dateForWeekday(weekday){ // weekday: 0=Sun..6=Sat
+  const now = new Date();
+  const offset = (weekday - now.getDay() + 7) % 7;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
 }
 
 function formatShortDate(d){
@@ -1119,9 +1132,9 @@ function formatShortDate(d){
 }
 
 function weekRangeLabel(){
-  const mon = dateForWeekday(1);
-  const sun = dateForWeekday(0);
-  return `${formatShortDate(mon)} – ${formatShortDate(sun)}`;
+  const now = new Date();
+  const last = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 6);
+  return `${formatShortDate(now)} – ${formatShortDate(last)}`;
 }
 
 // ---- AC unit cleaning rotation: master bedroom -> study -> baby room -> living room, one per week ----
@@ -1144,7 +1157,8 @@ function acRoomIndexForMonday(mondayDate){
 }
 
 function acRoomForDay(day){
-  const monday = dateForWeekday(1);
+  const d = dateForWeekday(day.weekday);
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
   return AC_ROOMS[acRoomIndexForMonday(monday)];
 }
 
@@ -1571,17 +1585,15 @@ let todoEditing = null; // { dayKey, idx } while a regular task is being edited/
 function escAttr(t){ return String(t||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function escHtml(t){ return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-async function saveTodoRows(day, rows){
-  rows.sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
-  // write to whichever list is currently shown for this day, so the change is visible right away
-  if(hasInstanceOverride(day)) await saveInstanceForDay(day, rows);
-  else await saveOverrideForDay(day.key, rows);
-}
+const sameRow = (a, b) => a && b && a[0]===b[0] && a[1]===b[1] && (a[2].zh||'')===(b[2].zh||'') && (a[2].en||'')===(b[2].en||'');
+const byStart = (a, b) => toMinutes(a[0]) - toMinutes(b[0]);
 
+// Edit / add: changes the master schedule (every week). If this week already has its own copy
+// (e.g. a task was deleted for this week only), the same change is mirrored into that copy too.
 async function saveTodoEdit(scope){
   if(!todoEditing) return;
   const day = DAYS.find(d=>d.key===todoEditing.dayKey);
-  const rows = displayRows(day).slice();
+  const shown = displayRows(day);
   const start = scope.querySelector('#editStart').value;
   const end = scope.querySelector('#editEnd').value;
   const zh = scope.querySelector('#editTaskZh').value.trim();
@@ -1589,21 +1601,49 @@ async function saveTodoEdit(scope){
   const fixed = scope.querySelector('#editFixed').checked;
   if(!start || !end || (!zh && !en)){ alert(STRINGS[currentLang].todoFormMissing); return; }
   const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
-  if(todoEditing.idx < rows.length) rows[todoEditing.idx] = newRow; else rows.push(newRow);
-  await saveTodoRows(day, rows);
+  const oldRow = todoEditing.idx < shown.length ? shown[todoEditing.idx] : null;
+
+  const master = effectiveRows(day).slice();
+  if(oldRow){
+    const mi = master.findIndex(r => sameRow(r, oldRow));
+    if(mi >= 0) master[mi] = newRow; else master.push(newRow);
+  } else {
+    master.push(newRow);
+  }
+  master.sort(byStart);
+  await saveOverrideForDay(day.key, master);
+
+  if(hasInstanceOverride(day)){
+    const week = shown.slice();
+    if(oldRow) week[todoEditing.idx] = newRow; else week.push(newRow);
+    week.sort(byStart);
+    await saveInstanceForDay(day, week);
+  }
   todoEditing = null;
   renderTodo();
   if(day.key === activeDayKey) renderTimeline();
 }
 
+// Delete: removes the task for THIS WEEK ONLY (the week shown at the top of the page).
+// The master schedule is untouched, so the task comes back next week.
 async function deleteTodoRow(dayKey, idx){
   const day = DAYS.find(d=>d.key===dayKey);
   const rows = displayRows(day).slice();
   const row = rows[idx];
   if(!row) return;
-  if(!confirm(STRINGS[currentLang].todoConfirmDelete(row[2][currentLang]))) return;
+  const dateLabel = formatShortDate(dateForWeekday(day.weekday));
+  if(!confirm(STRINGS[currentLang].todoConfirmDelete(row[2][currentLang], dateLabel))) return;
   rows.splice(idx, 1);
-  await saveTodoRows(day, rows);
+  await saveInstanceForDay(day, rows);
+  todoEditing = null;
+  renderTodo();
+  if(day.key === activeDayKey) renderTimeline();
+}
+
+async function restoreTodoWeek(dayKey){
+  const day = DAYS.find(d=>d.key===dayKey);
+  if(!confirm(STRINGS[currentLang].todoConfirmRestore(formatShortDate(dateForWeekday(day.weekday))))) return;
+  await clearInstanceForDay(day);
   todoEditing = null;
   renderTodo();
   if(day.key === activeDayKey) renderTimeline();
@@ -1646,8 +1686,11 @@ async function renderTodo(){
     const regularHtml = regularItems.length
       ? `<ul class="todo-tasks">${regularItems.join('')}</ul>`
       : `<p class="todo-empty">${T.todoEmpty}</p>`;
+    const weekOnly = !isVanessa && hasInstanceOverride(day);
     const addRegularBtn = isVanessa ? '' :
-      `<button class="add-task-btn todo-add-regular" data-day="${day.key}">＋ ${T.todoAddRegular}</button>`;
+      `<button class="add-task-btn todo-add-regular" data-day="${day.key}">＋ ${T.todoAddRegular}</button>` +
+      (weekOnly ? `<div class="todo-week-note">${T.todoWeekOnlyNote(formatShortDate(dateForWeekday(day.weekday)))}
+        <button class="todo-restore" data-day="${day.key}">${T.todoRestoreWeek}</button></div>` : '');
 
     // ad-hoc tasks for this weekday
     const adhoc = (adhocCache[day.key] || []).slice()
@@ -1705,6 +1748,9 @@ async function renderTodo(){
   });
   el.querySelectorAll('.todo-del').forEach(btn=>{
     btn.addEventListener('click', ()=> deleteTodoRow(btn.dataset.day, Number(btn.dataset.idx)));
+  });
+  el.querySelectorAll('.todo-restore').forEach(btn=>{
+    btn.addEventListener('click', ()=> restoreTodoWeek(btn.dataset.day));
   });
   el.querySelectorAll('.todo-add-regular').forEach(btn=>{
     btn.addEventListener('click', ()=>{
