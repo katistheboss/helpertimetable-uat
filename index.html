@@ -804,35 +804,79 @@ const DAYS = [
 let currentLang = 'en';
 let activeDayKey = null;
 
-// ---- storage helpers (backed by a Cloudflare Pages Function which commits to a GitHub-hosted JSON db) ----
-const hasStorage = true; // every user shares the same GitHub-backed store, so this is always "available"
+// ---- Supabase connection ----
+const SUPABASE_URL = 'https://mruawqrjtzwxwntuomqr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ydWF3cXJqdHp3eHdudHVvbXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NzMzMjcsImV4cCI6MjEwNTA0OTMyN30.g5IJxf5R-8F-Spnic-_UVR9e-CPJSgNqXJ4tCdtommI';
+const SB_HEADERS = {
+  'apikey': SUPABASE_ANON_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+};
+
+// ---- storage helpers (Supabase `kv_store` table is the primary store) ----
+// Every key the app uses (daylog:YYYY-MM-DD, adhoc:<day>, tasklog:..., overrides, instances)
+// is one row: { key, value (jsonb), updated_at }. Daily tick state lives in `daylog:<date>` rows,
+// which are never deleted, so each day's ticks stay on record.
+const hasStorage = true;
 const memoryStore = {}; // last-resort fallback if the network call fails
+const LEGACY_KV_ENDPOINT = '/api/kv'; // old GitHub-backed store, read once to migrate existing data
+
+async function legacyGet(key){
+  try{
+    const res = await fetch(LEGACY_KV_ENDPOINT + '?key=' + encodeURIComponent(key));
+    if(!res.ok) return null;
+    const body = await res.json();
+    return (body && 'value' in body) ? body.value : null;
+  }catch(e){ return null; }
+}
 
 async function storageGet(key, shared){
   try{
-    const res = await fetch('/api/kv?key=' + encodeURIComponent(key));
-    if(!res.ok) return memoryStore[key] ?? null;
-    const body = await res.json();
-    return (body && 'value' in body) ? body.value : null;
-  }catch(e){ return memoryStore[key] ?? null; }
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kv_store?select=value&key=eq.' + encodeURIComponent(key), {
+      headers: SB_HEADERS
+    });
+    if(!res.ok){
+      console.warn('[supabase] read failed', key, res.status, await res.text());
+      return memoryStore[key] ?? null;
+    }
+    const rows = await res.json();
+    if(rows.length){
+      memoryStore[key] = rows[0].value;
+      return rows[0].value;
+    }
+    // Not in Supabase yet: try the old GitHub-backed store once and copy it across
+    const legacy = await legacyGet(key);
+    if(legacy !== null && legacy !== undefined){
+      await storageSet(key, legacy, shared);
+      return legacy;
+    }
+    return null;
+  }catch(e){
+    console.warn('[supabase] read error', key, e);
+    return memoryStore[key] ?? null;
+  }
 }
 
 async function storageSet(key, value, shared){
   memoryStore[key] = value; // optimistic local cache in case the write fails
   try{
-    await fetch('/api/kv', {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/kv_store?on_conflict=key', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value })
+      headers: {
+        ...SB_HEADERS,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
     });
-  }catch(e){ /* value stays in memoryStore for this session; will sync on next successful write */ }
+    if(!res.ok) console.warn('[supabase] write failed', key, res.status, await res.text());
+  }catch(e){
+    console.warn('[supabase] write error', key, e); // value stays in memoryStore for this session
+  }
 }
 
-// ---- audit-trail logging (Supabase-backed, independent of the GitHub-backed store above) ----
+// ---- audit-trail logging (Supabase `task_logs` table) ----
 // Every completed/uncompleted checkbox tick is recorded as its own row in the `task_logs`
 // table, with day/type/action columns so the log modal can filter across full history.
-const SUPABASE_URL = 'https://mruawqrjtzwxwntuomqr.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ydWF3cXJqdHp3eHdudHVvbXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0NzMzMjcsImV4cCI6MjEwNTA0OTMyN30.g5IJxf5R-8F-Spnic-_UVR9e-CPJSgNqXJ4tCdtommI';
 
 async function logAuditEvent({ taskKey, dayKey, taskType, taskTextZh, taskTextEn, action }){
   try{
@@ -854,8 +898,10 @@ async function logAuditEvent({ taskKey, dayKey, taskType, taskTextZh, taskTextEn
         completed_date: todayISO(),
         completed_at: new Date().toISOString()
       })
+    }).then(async res => {
+      if(!res.ok) console.warn('[supabase] audit log failed', res.status, await res.text());
     });
-  }catch(e){ /* best-effort audit log; the GitHub-backed store above is unaffected either way */ }
+  }catch(e){ console.warn('[supabase] audit log error', e); }
 }
 
 async function fetchAuditLog(filters){
@@ -872,7 +918,7 @@ async function fetchAuditLog(filters){
     const res = await fetch(SUPABASE_URL + '/rest/v1/task_logs?' + params.toString(), {
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
     });
-    if(!res.ok) return [];
+    if(!res.ok){ console.warn('[supabase] audit fetch failed', res.status, await res.text()); return []; }
     return await res.json();
   }catch(e){ return []; }
 }
