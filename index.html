@@ -384,6 +384,17 @@
   .lt-action-uncompleted{ color: var(--clay); font-weight:600; }
 
   footer{ text-align:center; margin-top: 24px; font-size: 0.76rem; color: var(--ink-soft); }
+  footer .foot-link{
+    display:inline-block; margin-bottom: 8px; color: var(--ink-soft); font-size: 0.74rem;
+    text-decoration: underline; text-decoration-color: rgba(0,0,0,0.2); text-underline-offset: 3px;
+    padding: 6px 8px;
+  }
+  footer .foot-link:hover, footer .foot-link.active{ color: var(--clay); text-decoration-color: currentColor; }
+  .back-link{ display:inline-block; margin: 0 0 10px; font-size: 0.8rem; color: var(--ink-soft); cursor:pointer;
+    background:none; border:none; padding: 6px 0; font-family: inherit; }
+  .back-link:hover{ color: var(--clay); }
+  .lt-action-edit{ color: #6B5B8C; font-weight:600; }
+  .lt-by{ font-size: 0.7rem; color: var(--ink-soft); }
   footer .foot-note{
     display:inline-block; background: var(--sage-soft); color: #3E4D38;
     padding: 8px 14px; border-radius: 20px; margin-top: 6px; max-width: 560px;
@@ -449,7 +460,6 @@
   <div class="view-switch" id="viewSwitch">
     <button data-view="todo">✅ <span id="viewTodoLabel"></span></button>
     <button data-view="summary">📋 <span id="viewSummaryLabel"></span></button>
-    <button data-view="timetable">📅 <span id="viewTimetableLabel"></span></button>
   </div>
 
   <div id="todoView" style="display:none;">
@@ -465,6 +475,7 @@
 
 
   <div id="timetableView">
+    <button class="back-link" id="timetableBack"></button>
     <div class="tabs" id="tabs"></div>
     <div class="panel">
       <div class="panel-header">
@@ -490,6 +501,7 @@
   </div>
 
   <footer>
+    <a href="#" class="foot-link" id="footTimetableLink">📅 <span id="viewTimetableLabel"></span></a>
     <div id="footPin"></div>
     <div class="foot-note" id="footNote"></div>
   </footer>
@@ -566,6 +578,19 @@ const STRINGS = {
     formFixed: '固定事項',
     confirmDelete: '確定要刪除呢項工作?',
     viewTimetableLabel: '時間表',
+    backLabel: '← 返回',
+    logActionAdded: '新增',
+    logActionEdited: '修改',
+    logActionDeleted: '刪除',
+    logActionRestored: '還原',
+    logActionGroupTicks: '打剔',
+    logActionGroupEdits: '太太先生修改',
+    logActionAllEdits: '所有修改',
+    logSrcTodo: '待辦清單',
+    logSrcRegular: '定期工作',
+    logSrcTimetable: '時間表',
+    logByMgmt: '由太太先生',
+    logWeekOnly: '(只限呢星期)',
     viewSummaryLabel: '定期工作摘要',
     summaryHeading: '📋 定期工作摘要',
     viewTodoLabel: '待辦清單',
@@ -636,6 +661,19 @@ const STRINGS = {
     formFixed: 'Fixed task',
     confirmDelete: 'Delete this task?',
     viewTimetableLabel: 'Time Reference',
+    backLabel: '← Back',
+    logActionAdded: 'Added',
+    logActionEdited: 'Edited',
+    logActionDeleted: 'Deleted',
+    logActionRestored: 'Restored',
+    logActionGroupTicks: 'Ticks',
+    logActionGroupEdits: "Ma'am & Sir edits",
+    logActionAllEdits: 'All edits',
+    logSrcTodo: 'To-do List',
+    logSrcRegular: 'Regular Tasks',
+    logSrcTimetable: 'Time Reference',
+    logByMgmt: "by Ma'am & Sir",
+    logWeekOnly: '(this week only)',
     viewSummaryLabel: 'Regular Tasks Summary',
     summaryHeading: '📋 Regular Tasks Summary',
     viewTodoLabel: 'To-do List',
@@ -968,23 +1006,88 @@ async function logAuditEvent({ taskKey, dayKey, taskType, taskTextZh, taskTextEn
   }catch(e){ console.warn('[supabase] audit log error', e); }
 }
 
+// ---- Ma'am & Sir edit tracking ----
+// Every add / edit / delete / restore made in Ma'am & Sir mode is written to the same `task_logs`
+// table (action = added | edited | deleted | restored, task_key = "edit:<source>[:week]"), so it shows
+// in the Log alongside ticks. day_key may list several days ("mon,wed") for Regular Tasks changes.
+// If the table rejects the row (e.g. a CHECK constraint on `action`), it falls back to a kv_store list.
+const EDIT_ACTIONS = ['added', 'edited', 'deleted', 'restored'];
+const EDIT_FALLBACK_KEY = 'editlog:v1';
+
+function fmtRowText(row, lang){
+  if(!row) return '';
+  const t = row[2] || {};
+  const name = lang === 'zh' ? (t.zh || t.en || '') : (t.en || t.zh || '');
+  if(!row[0]) return name;
+  return row[1] ? `${name} ${row[0]}–${row[1]}` : `${name} ${row[0]}`;
+}
+
+async function logEditEvent({ source, action, dayKeys, taskType, before, after, weekOnly, note }){
+  const text = lang => {
+    if(note) return note[lang] || note.en || '';
+    const b = fmtRowText(before, lang), a = fmtRowText(after, lang);
+    if(b && a && b !== a) return `${b} → ${a}`;
+    return a || b;
+  };
+  const rec = {
+    task_key: 'edit:' + source + (weekOnly ? ':week' : ''),
+    day_key: (dayKeys || []).join(','),
+    task_type: taskType || 'regular',
+    task_text_zh: text('zh'),
+    task_text_en: text('en'),
+    action,
+    completed_date: todayISO(),
+    completed_at: new Date().toISOString()
+  };
+  try{
+    const res = await fetch(SUPABASE_URL + '/rest/v1/task_logs', {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify(rec)
+    });
+    if(res.ok) return;
+    console.warn('[supabase] edit log rejected, using kv fallback', res.status, await res.text());
+  }catch(e){ console.warn('[supabase] edit log error, using kv fallback', e); }
+  const list = (await storageGet(EDIT_FALLBACK_KEY, true)) || [];
+  list.push({ ...rec, id: 'kv-' + Date.now() });
+  await storageSet(EDIT_FALLBACK_KEY, list.slice(-500), true);
+}
+
+// a row "matches" when every chosen filter fits (used for the kv fallback list)
+function auditRowMatches(r, f){
+  if(f.dayKey && !String(r.day_key || '').split(',').includes(f.dayKey)) return false;
+  if(f.taskType && r.task_type !== f.taskType) return false;
+  if(f.action === '__edits' && !EDIT_ACTIONS.includes(r.action)) return false;
+  if(f.action && f.action !== '__edits' && r.action !== f.action) return false;
+  if(f.from && r.completed_date < f.from) return false;
+  if(f.to && r.completed_date > f.to) return false;
+  return true;
+}
+
 async function fetchAuditLog(filters){
   const params = new URLSearchParams();
   params.set('select', '*');
   params.set('order', 'completed_at.desc');
   params.set('limit', '300');
-  if(filters.dayKey) params.set('day_key', 'eq.' + filters.dayKey);
+  if(filters.dayKey) params.set('day_key', 'like.*' + filters.dayKey + '*');
   if(filters.taskType) params.set('task_type', 'eq.' + filters.taskType);
-  if(filters.action) params.set('action', 'eq.' + filters.action);
+  if(filters.action === '__edits') params.set('action', 'in.(' + EDIT_ACTIONS.join(',') + ')');
+  else if(filters.action) params.set('action', 'eq.' + filters.action);
   if(filters.from) params.append('completed_date', 'gte.' + filters.from);
   if(filters.to) params.append('completed_date', 'lte.' + filters.to);
+  let rows = [];
   try{
     const res = await fetch(SUPABASE_URL + '/rest/v1/task_logs?' + params.toString(), {
       headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
     });
-    if(!res.ok){ console.warn('[supabase] audit fetch failed', res.status, await res.text()); return []; }
-    return await res.json();
-  }catch(e){ return []; }
+    if(res.ok) rows = await res.json();
+    else console.warn('[supabase] audit fetch failed', res.status, await res.text());
+  }catch(e){}
+  const extra = ((await storageGet(EDIT_FALLBACK_KEY, true)) || []).filter(r => auditRowMatches(r, filters));
+  if(extra.length){
+    rows = rows.concat(extra).sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 300);
+  }
+  return rows;
 }
 
 function todayISO(){
@@ -1070,12 +1173,16 @@ async function saveAdhocForDay(dayKey){
   await storageSet('adhoc:'+dayKey, adhocCache[dayKey] || [], true);
 }
 
-async function addAdhocTask(dayKey, text, time){
+const adhocAsRow = item => [item.time || '', '', {zh: item.text, en: item.text}];
+
+async function addAdhocTask(dayKey, text, time, source = 'timetable'){
   if(!text.trim()) return;
   if(!adhocCache[dayKey]) adhocCache[dayKey] = [];
-  adhocCache[dayKey].push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), text: text.trim(), time: time || '', done: false });
+  const item = { id: Date.now()+'-'+Math.random().toString(36).slice(2,7), text: text.trim(), time: time || '', done: false };
+  adhocCache[dayKey].push(item);
   adhocCache[dayKey].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
   await saveAdhocForDay(dayKey);
+  logEditEvent({ source, action: 'added', dayKeys: [dayKey], taskType: 'adhoc', after: adhocAsRow(item) });
   renderAdhoc();
   if(dayKey === activeDayKey) renderTimeline();
 }
@@ -1096,9 +1203,11 @@ async function toggleAdhocDone(dayKey, id){
   }
 }
 
-async function deleteAdhocTask(dayKey, id){
+async function deleteAdhocTask(dayKey, id, source = 'timetable'){
+  const item = (adhocCache[dayKey]||[]).find(a=>a.id===id);
   adhocCache[dayKey] = (adhocCache[dayKey]||[]).filter(a=>a.id!==id);
   await saveAdhocForDay(dayKey);
+  if(item) logEditEvent({ source, action: 'deleted', dayKeys: [dayKey], taskType: 'adhoc', before: adhocAsRow(item) });
   renderAdhoc();
   if(dayKey === activeDayKey) renderTimeline();
 }
@@ -1251,6 +1360,8 @@ function renderHeader(){
   document.querySelectorAll('#viewSwitch button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view === currentView);
   });
+  document.getElementById('footTimetableLink').classList.toggle('active', currentView === 'timetable');
+  document.getElementById('timetableBack').textContent = STRINGS[currentLang].backLabel;
   document.getElementById('timetableView').style.display = currentView === 'timetable' ? 'block' : 'none';
   document.getElementById('summaryView').style.display = currentView === 'summary' ? 'block' : 'none';
   document.getElementById('todoView').style.display = currentView === 'todo' ? 'block' : 'none';
@@ -1302,6 +1413,13 @@ async function applyRegularChange(oldGroup, spec){
     if(newRow && spec.days.includes(day.key)) out.push(newRow);
     return out.sort(byStart);
   };
+  const touched = DAYS.filter(d => (oldGroup && oldGroup.days.includes(d.key)) || (spec && spec.days.includes(d.key))).map(d => d.key);
+  logEditEvent({
+    source: 'regular',
+    action: !oldGroup ? 'added' : (!spec ? 'deleted' : 'edited'),
+    dayKeys: touched, taskType: 'regular',
+    before: oldRow, after: newRow
+  });
   for(const day of DAYS){
     const affected = (oldGroup && oldGroup.days.includes(day.key)) || (spec && spec.days.includes(day.key));
     if(!affected) continue;
@@ -1639,6 +1757,8 @@ async function saveEditForm(){
   if(!start || !end || (!zh && !en)) return;
 
   const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
+  logEditEvent({ source: 'timetable', action: editingIdx < rows.length ? 'edited' : 'added', dayKeys: [day.key],
+    taskType: 'regular', before: rows[editingIdx] || null, after: newRow });
   if(editingIdx < rows.length){
     rows[editingIdx] = newRow;
   } else {
@@ -1655,8 +1775,9 @@ async function saveEditForm(){
 async function deleteTaskRow(idx){
   const day = DAYS.find(d=>d.key===activeDayKey);
   const rows = effectiveRows(day).slice();
-  rows.splice(idx, 1);
+  const removed = rows.splice(idx, 1)[0];
   await saveOverrideForDay(day.key, rows);
+  if(removed) logEditEvent({ source: 'timetable', action: 'deleted', dayKeys: [day.key], taskType: 'regular', before: removed });
   renderEditModalList();
 }
 
@@ -1679,6 +1800,8 @@ async function saveInstanceEdit(){
   if(!start || !end || (!zh && !en)) return;
 
   const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
+  logEditEvent({ source: 'timetable', action: instanceEditingIdx < rows.length ? 'edited' : 'added', dayKeys: [day.key],
+    taskType: 'regular', before: rows[instanceEditingIdx] || null, after: newRow, weekOnly: true });
   if(instanceEditingIdx < rows.length){
     rows[instanceEditingIdx] = newRow;
   } else {
@@ -1694,14 +1817,17 @@ async function saveInstanceEdit(){
 async function deleteInstanceRow(idx){
   const day = DAYS.find(d=>d.key===activeDayKey);
   const rows = displayRows(day).slice();
-  rows.splice(idx, 1);
+  const removed = rows.splice(idx, 1)[0];
   await saveInstanceForDay(day, rows);
+  if(removed) logEditEvent({ source: 'timetable', action: 'deleted', dayKeys: [day.key], taskType: 'regular', before: removed, weekOnly: true });
   renderTimeline();
 }
 
 async function resetInstanceToMaster(){
   const day = DAYS.find(d=>d.key===activeDayKey);
   await clearInstanceForDay(day);
+  logEditEvent({ source: 'timetable', action: 'restored', dayKeys: [day.key], taskType: 'regular', weekOnly: true,
+    note: { zh: STRINGS.zh.resetInstanceBtn.replace(/^↺\s*/, ''), en: STRINGS.en.resetInstanceBtn.replace(/^↺\s*/, '') } });
   instanceEditingIdx = null;
   renderTimeline();
 }
@@ -1768,6 +1894,7 @@ async function saveTodoEdit(scope){
     week.sort(byStart);
     await saveInstanceForDay(day, week);
   }
+  logEditEvent({ source: 'todo', action: oldRow ? 'edited' : 'added', dayKeys: [day.key], taskType: 'regular', before: oldRow, after: newRow });
   todoEditing = null;
   renderTodo();
   if(day.key === activeDayKey) renderTimeline();
@@ -1784,6 +1911,7 @@ async function deleteTodoRow(dayKey, idx){
   if(!confirm(STRINGS[currentLang].todoConfirmDelete(row[2][currentLang], dateLabel))) return;
   rows.splice(idx, 1);
   await saveInstanceForDay(day, rows);
+  logEditEvent({ source: 'todo', action: 'deleted', dayKeys: [day.key], taskType: 'regular', before: row, weekOnly: true });
   todoEditing = null;
   renderTodo();
   if(day.key === activeDayKey) renderTimeline();
@@ -1791,8 +1919,11 @@ async function deleteTodoRow(dayKey, idx){
 
 async function restoreTodoWeek(dayKey){
   const day = DAYS.find(d=>d.key===dayKey);
-  if(!confirm(STRINGS[currentLang].todoConfirmRestore(formatShortDate(dateForWeekday(day.weekday))))) return;
+  const dLabel = formatShortDate(dateForWeekday(day.weekday));
+  if(!confirm(STRINGS[currentLang].todoConfirmRestore(dLabel))) return;
   await clearInstanceForDay(day);
+  logEditEvent({ source: 'todo', action: 'restored', dayKeys: [day.key], taskType: 'regular', weekOnly: true,
+    note: { zh: STRINGS.zh.todoConfirmRestore(dLabel).replace(/[?？]$/, ''), en: STRINGS.en.todoConfirmRestore(dLabel).replace(/\?$/, '') } });
   todoEditing = null;
   renderTodo();
   if(day.key === activeDayKey) renderTimeline();
@@ -1924,7 +2055,7 @@ async function renderTodo(){
   }
   el.querySelectorAll('.todo-adhoc-del').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
-      await deleteAdhocTask(btn.dataset.day, btn.dataset.id);
+      await deleteAdhocTask(btn.dataset.day, btn.dataset.id, 'todo');
       renderTodo();
     });
   });
@@ -1933,7 +2064,7 @@ async function renderTodo(){
       const text = f.querySelector('.todo-adhoc-text').value;
       const time = f.querySelector('.todo-adhoc-time').value;
       if(!text.trim()) return;
-      await addAdhocTask(f.dataset.day, text, time);
+      await addAdhocTask(f.dataset.day, text, time, 'todo');
       renderTodo();
     };
     f.querySelector('.todo-adhoc-add').addEventListener('click', add);
@@ -1941,7 +2072,9 @@ async function renderTodo(){
   });
 }
 
+let lastMainView = 'todo'; // where the Time Reference "back" link returns to
 async function setView(view){
+  if(view !== 'timetable') lastMainView = view;
   currentView = view;
   renderHeader();
   if(view === 'todo') renderTodo();
@@ -1965,6 +2098,13 @@ document.getElementById('viewSwitch').addEventListener('click', (e)=>{
   if(!btn) return;
   setView(btn.dataset.view);
 });
+
+document.getElementById('footTimetableLink').addEventListener('click', (e)=>{
+  e.preventDefault();
+  setView('timetable');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+document.getElementById('timetableBack').addEventListener('click', ()=> setView(lastMainView));
 
 document.getElementById('addTaskBtn').addEventListener('click', openEditModal);
 document.getElementById('resetInstanceBtn').addEventListener('click', resetInstanceToMaster);
@@ -2008,10 +2148,20 @@ function populateLogFilterOptions(){
     <option value="adhoc">${STRINGS[currentLang].logFilterAdhoc}</option>
   `;
 
+  const T = STRINGS[currentLang];
   document.getElementById('logFilterAction').innerHTML = `
-    <option value="">${STRINGS[currentLang].logFilterAllActions}</option>
-    <option value="completed">${STRINGS[currentLang].logActionCompleted}</option>
-    <option value="uncompleted">${STRINGS[currentLang].logActionUncompleted}</option>
+    <option value="">${T.logFilterAllActions}</option>
+    <optgroup label="${escAttr(T.logActionGroupTicks)}">
+      <option value="completed">${T.logActionCompleted}</option>
+      <option value="uncompleted">${T.logActionUncompleted}</option>
+    </optgroup>
+    <optgroup label="${escAttr(T.logActionGroupEdits)}">
+      <option value="__edits">${T.logActionAllEdits}</option>
+      <option value="added">${T.logActionAdded}</option>
+      <option value="edited">${T.logActionEdited}</option>
+      <option value="deleted">${T.logActionDeleted}</option>
+      <option value="restored">${T.logActionRestored}</option>
+    </optgroup>
   `;
 
   document.getElementById('logFilterBtn').textContent = STRINGS[currentLang].logFilterApply;
@@ -2037,15 +2187,29 @@ async function runLogFilter(){
 
   body.innerHTML = rows.map(r => {
     const taskText = currentLang === 'zh' ? (r.task_text_zh || r.task_text_en) : (r.task_text_en || r.task_text_zh);
-    const dayObj = DAYS.find(d=>d.key===r.day_key);
-    const dLabel = dayObj ? dayObj.label[currentLang] : r.day_key;
-    const actionCls = r.action === 'completed' ? 'lt-action-completed' : 'lt-action-uncompleted';
-    const actionLabel = r.action === 'completed' ? STRINGS[currentLang].logActionCompleted : STRINGS[currentLang].logActionUncompleted;
+    const T = STRINGS[currentLang];
+    const dayKeys = String(r.day_key || '').split(',').filter(Boolean);
+    const dLabel = dayKeys.length === DAYS.length ? T.regEveryDay
+      : dayKeys.map(k => { const d = DAYS.find(x=>x.key===k); return d ? d.label[currentLang] : k; }).join(currentLang === 'zh' ? '、' : ', ');
+    const isEdit = EDIT_ACTIONS.includes(r.action);
+    const actionCls = isEdit ? 'lt-action-edit' : (r.action === 'completed' ? 'lt-action-completed' : 'lt-action-uncompleted');
+    const actionLabel = {
+      completed: T.logActionCompleted, uncompleted: T.logActionUncompleted,
+      added: T.logActionAdded, edited: T.logActionEdited, deleted: T.logActionDeleted, restored: T.logActionRestored
+    }[r.action] || r.action;
+    let byLine = '';
+    if(isEdit){
+      const [, src, scope] = String(r.task_key || '').split(':');
+      const srcLabel = { todo: T.logSrcTodo, regular: T.logSrcRegular, timetable: T.logSrcTimetable }[src] || src || '';
+      const typeTag = r.task_type === 'adhoc' ? '📝 ' : '📌 ';
+      byLine = `<div class="lt-by">👫 ${T.logByMgmt} · ${typeTag}${srcLabel}${scope === 'week' ? ' ' + T.logWeekOnly : ''}</div>`;
+    }
     const when = new Date(r.completed_at).toLocaleString(currentLang==='zh' ? 'zh-HK' : 'en-US', {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'});
     return `
       <div class="log-item">
-        <div class="lt-task">${taskText || r.task_key}</div>
+        <div class="lt-task">${escHtml(taskText || r.task_key)}</div>
         <div class="lt-meta">${dLabel} · <span class="${actionCls}">${actionLabel}</span> · ${when}</div>
+        ${byLine}
       </div>
     `;
   }).join('');
