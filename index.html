@@ -84,6 +84,7 @@
   .todo-day h3{
     font-family:'Kalam', cursive; font-size: 1.1rem; margin: 0 0 8px; color: var(--ink);
   }
+  .todo-day h3 .todo-day-date{ font-family:'IBM Plex Mono', monospace; font-size: 0.85em; font-weight: 600; color: var(--clay); }
   .todo-day h3 .todo-day-sub{ font-size: 0.75rem; font-weight: 400; color: var(--ink-soft); margin-left: 6px; }
   .todo-tasks{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap: 6px; }
   .todo-tasks li{
@@ -1797,6 +1798,14 @@ async function restoreTodoWeek(dayKey){
   if(day.key === activeDayKey) renderTimeline();
 }
 
+// To-do card heading: insert the coming date after the weekday name, e.g. "Monday 10/5 — Bedding day…"
+function todoDayTitle(day){
+  const title = day.title[currentLang];
+  const date = `<span class="todo-day-date">${formatShortDate(dateForWeekday(day.weekday))}</span>`;
+  const i = title.indexOf(' — ');
+  return i === -1 ? `${title} ${date}` : `${title.slice(0, i)} ${date}${title.slice(i)}`;
+}
+
 async function renderTodo(){
   await Promise.all(DAYS.map(d => Promise.all([loadOverrideForDay(d.key), loadInstanceForDay(d), loadAdhocForDay(d.key)])));
   const isVanessa = currentMode !== 'mgmt';
@@ -1871,7 +1880,7 @@ async function renderTodo(){
         ${adhocForm}
       </div>` : '';
 
-    return `<div class="todo-day"><h3>${day.title[currentLang]}</h3>${regularHtml}${addRegularBtn}${adhocHtml}</div>`;
+    return `<div class="todo-day"><h3>${todoDayTitle(day)}</h3>${regularHtml}${addRegularBtn}${adhocHtml}</div>`;
   }).join('');
 
   if(isVanessa){
