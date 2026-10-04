@@ -1295,7 +1295,7 @@ function renderTimeline(){
       const {start,end,task,fixed} = m;
       const isNow = isToday && nowMin >= toMinutes(start) && nowMin < toMinutes(end);
       const taskKey = day.key+'-'+idx;
-      const isDone = isToday && !!todayTasks[taskKey];
+      const isDone = !!todayTasks[taskKey];
       const pin = fixed ? '📌 ' : '';
       const acSuffix = isACTask(task) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
 
@@ -1304,7 +1304,7 @@ function renderTimeline(){
              <button class="edit-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].editBtn}">✏️</button>
              <button class="delrow-btn" data-idx="${idx}" aria-label="${STRINGS[currentLang].delBtn}">✕</button>
            </span>`
-        : `<span class="check"><input type="checkbox" ${isDone?'checked':''} ${isToday?'':'disabled'} data-taskkey="${taskKey}"></span>`;
+        : `<span class="check"><input type="checkbox" ${isDone?'checked':''} data-taskkey="${taskKey}"></span>`;
 
       return `
         <li class="row ${fixed?'fixed':''} ${isNow?'is-now':''} ${isDone?'done':''}">
@@ -1550,10 +1550,10 @@ async function renderTodo(){
       ? `<ul class="todo-tasks">${entries.map(({r, idx}) => {
           const acSuffix = isACTask(r[2]) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
           const taskKey = day.key+'-'+idx;
-          const isDone = isToday && !!todayTasks[taskKey];
+          const isDone = !!todayTasks[taskKey];
           if(isVanessa){
             return `<li class="${isDone?'done':''}">
-              <input type="checkbox" ${isDone?'checked':''} ${isToday?'':'disabled'} data-taskkey="${taskKey}">
+              <input type="checkbox" ${isDone?'checked':''} data-taskkey="${taskKey}">
               <span class="todo-text">${r[2][currentLang]}${acSuffix}</span>
             </li>`;
           }
