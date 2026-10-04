@@ -819,6 +819,14 @@ const DAYS = [
       ['12:00','15:00', {zh:'彈性時間/其他家務', en:'Flexible time / other chores'}, false],
     ]
   },
+  {
+    key: 'sun', weekday: 0,
+    label: { zh: '日', en: 'Sun' },
+    sub: { zh: '自訂', en: 'Custom' },
+    title: { zh: '星期日', en: 'Sunday' },
+    note: { zh: '星期日冇固定工作,可以加臨時工作或者自訂工作。', en: 'No regular tasks on Sunday — add ad-hoc or custom tasks as needed.' },
+    rows: []
+  },
 ];
 
 let currentLang = 'en';
@@ -1091,18 +1099,19 @@ function addMinutes(t, mins){
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
-// ---- current-week date helpers (this view shows the upcoming/current Mon–Sat) ----
+// ---- current-week date helpers (this view shows the current Mon–Sun week) ----
 function getMondayOfCurrentWeek(){
   const now = new Date();
   const day = now.getDay(); // 0=Sun..6=Sat
-  const diff = day === 0 ? 1 : 1 - day;
+  const diff = day === 0 ? -6 : 1 - day; // Sunday belongs to the week that started the previous Monday
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
   return monday;
 }
 
-function dateForWeekday(weekday){ // weekday: 1=Mon..6=Sat
+function dateForWeekday(weekday){ // weekday: 1=Mon..6=Sat, 0=Sun (end of week)
   const monday = getMondayOfCurrentWeek();
-  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + (weekday - 1));
+  const offset = weekday === 0 ? 6 : weekday - 1;
+  return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + offset);
 }
 
 function formatShortDate(d){
@@ -1111,8 +1120,8 @@ function formatShortDate(d){
 
 function weekRangeLabel(){
   const mon = dateForWeekday(1);
-  const sat = dateForWeekday(6);
-  return `${formatShortDate(mon)} – ${formatShortDate(sat)}`;
+  const sun = dateForWeekday(0);
+  return `${formatShortDate(mon)} – ${formatShortDate(sun)}`;
 }
 
 // ---- AC unit cleaning rotation: master bedroom -> study -> baby room -> living room, one per week ----
