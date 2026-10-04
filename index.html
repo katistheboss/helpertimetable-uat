@@ -95,6 +95,18 @@
   .todo-tasks .todo-text{ flex:1; }
   .todo-tasks li.done .todo-text{ text-decoration: line-through; opacity: 0.55; }
   .todo-empty{ font-size: 0.82rem; color: var(--ink-soft); font-style: italic; }
+  .todo-time{ font-family:'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--clay); font-weight:600; white-space:nowrap; }
+  .todo-actions{ display:flex; gap: 2px; flex-shrink:0; }
+  .todo-actions button{
+    border:none; background:transparent; cursor:pointer; font-size: 0.95rem; color: var(--ink-soft);
+    padding: 6px; line-height:1; min-width: 34px; min-height: 34px; border-radius: 6px;
+  }
+  .todo-actions button:hover{ color: var(--clay); background: var(--sage-soft); }
+  .todo-tasks li.edit-row{ display:flex; flex-direction:column; align-items:stretch; border-bottom:none; font-size:0.9rem; }
+  .todo-day .add-task-btn{ margin-top: 8px; padding: 10px; }
+  .todo-adhoc{ margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .todo-adhoc h4{ margin: 0 0 6px; font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); }
+  .todo-adhoc .adhoc-form{ margin: 8px 0 0; }
 
   /* ---- row action icons (Ma'am & Sir mode) ---- */
   .row-actions{ display:flex; flex-direction:column; gap: 0; align-items:flex-start; }
@@ -539,6 +551,10 @@ const STRINGS = {
     viewTodoLabel: '待辦清單',
     todoHeading: '✅ 每日固定任務清單',
     todoEmpty: '呢日冇固定任務',
+    todoAdhocHeading: '📝 臨時工作',
+    todoAddRegular: '新增固定工作',
+    todoFormMissing: '請填寫開始/結束時間同工作內容',
+    todoConfirmDelete: (t)=>`確定刪除「${t}」？`,
     instanceHint: '✏️ 喺呢度編輯只改呢一週,唔會影響總時間表',
     resetInstanceBtn: '↺ 還原返總時間表(呢一週)',
     logModalSubAudit: '工作完成記錄 — 可用下面篩選器查看指定日子/類型/日期範圍',
@@ -597,6 +613,10 @@ const STRINGS = {
     viewTodoLabel: 'To-do List',
     todoHeading: '✅ Daily Fixed Task List',
     todoEmpty: 'No fixed tasks this day',
+    todoAdhocHeading: '📝 Ad-hoc tasks',
+    todoAddRegular: 'Add regular task',
+    todoFormMissing: 'Please fill in start/end time and the task',
+    todoConfirmDelete: (t)=>`Delete "${t}"?`,
     instanceHint: '✏️ Editing here only changes this week — the master list is unaffected',
     resetInstanceBtn: '↺ Reset this week to master list',
     logModalSubAudit: 'Task completion history — use the filters below to narrow by day, type, or date range',
@@ -1527,40 +1547,131 @@ function setLang(lang){
 function setMode(mode){
   currentMode = mode;
   editingIdx = null;
+  todoEditing = null;
   renderHeader();
   renderTimeline();
   renderAdhoc();
   if(currentView === 'todo') renderTodo();
 }
 
+// ---- To-do List view ----
+// Vanessa mode: tick regular (📌) tasks and ad-hoc tasks for any day.
+// Ma'am & Sir mode: edit / delete / add regular tasks, and add / delete ad-hoc tasks, per day.
+let todoEditing = null; // { dayKey, idx } while a regular task is being edited/added in the To-do List
+
+function escAttr(t){ return String(t||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function escHtml(t){ return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function saveTodoRows(day, rows){
+  rows.sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
+  // write to whichever list is currently shown for this day, so the change is visible right away
+  if(hasInstanceOverride(day)) await saveInstanceForDay(day, rows);
+  else await saveOverrideForDay(day.key, rows);
+}
+
+async function saveTodoEdit(scope){
+  if(!todoEditing) return;
+  const day = DAYS.find(d=>d.key===todoEditing.dayKey);
+  const rows = displayRows(day).slice();
+  const start = scope.querySelector('#editStart').value;
+  const end = scope.querySelector('#editEnd').value;
+  const zh = scope.querySelector('#editTaskZh').value.trim();
+  const en = scope.querySelector('#editTaskEn').value.trim();
+  const fixed = scope.querySelector('#editFixed').checked;
+  if(!start || !end || (!zh && !en)){ alert(STRINGS[currentLang].todoFormMissing); return; }
+  const newRow = [start, end, {zh: zh || en, en: en || zh}, fixed];
+  if(todoEditing.idx < rows.length) rows[todoEditing.idx] = newRow; else rows.push(newRow);
+  await saveTodoRows(day, rows);
+  todoEditing = null;
+  renderTodo();
+  if(day.key === activeDayKey) renderTimeline();
+}
+
+async function deleteTodoRow(dayKey, idx){
+  const day = DAYS.find(d=>d.key===dayKey);
+  const rows = displayRows(day).slice();
+  const row = rows[idx];
+  if(!row) return;
+  if(!confirm(STRINGS[currentLang].todoConfirmDelete(row[2][currentLang]))) return;
+  rows.splice(idx, 1);
+  await saveTodoRows(day, rows);
+  todoEditing = null;
+  renderTodo();
+  if(day.key === activeDayKey) renderTimeline();
+}
+
 async function renderTodo(){
-  await Promise.all(DAYS.map(d => Promise.all([loadOverrideForDay(d.key), loadInstanceForDay(d)])));
-  const now = new Date();
-  const todayWeekday = now.getDay();
+  await Promise.all(DAYS.map(d => Promise.all([loadOverrideForDay(d.key), loadInstanceForDay(d), loadAdhocForDay(d.key)])));
   const isVanessa = currentMode !== 'mgmt';
+  const T = STRINGS[currentLang];
   const el = document.getElementById('todoDays');
   el.innerHTML = DAYS.map(day => {
+    const allRows = displayRows(day);
     // keep original row index (matches the taskKey used by the main timeline) so ticking here
     // stays in sync with ticking on the Timetable tab
-    const entries = displayRows(day)
-      .map((r, idx) => ({ r, idx }))
-      .filter(x => x.r[3]);
-    const isToday = day.weekday === todayWeekday;
-    const tasksHtml = entries.length
-      ? `<ul class="todo-tasks">${entries.map(({r, idx}) => {
-          const acSuffix = isACTask(r[2]) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
-          const taskKey = day.key+'-'+idx;
-          const isDone = !!todayTasks[taskKey];
-          if(isVanessa){
-            return `<li class="${isDone?'done':''}">
-              <input type="checkbox" ${isDone?'checked':''} data-taskkey="${taskKey}">
-              <span class="todo-text">${r[2][currentLang]}${acSuffix}</span>
-            </li>`;
-          }
-          return `<li>📌 ${r[2][currentLang]}${acSuffix}</li>`;
-        }).join('')}</ul>`
-      : `<p class="todo-empty">${STRINGS[currentLang].todoEmpty}</p>`;
-    return `<div class="todo-day"><h3>${day.title[currentLang]}</h3>${tasksHtml}</div>`;
+    const entries = allRows.map((r, idx) => ({ r, idx })).filter(x => x.r[3]);
+    const editingHere = !isVanessa && todoEditing && todoEditing.dayKey === day.key;
+
+    const regularItems = entries.map(({r, idx}) => {
+      if(editingHere && todoEditing.idx === idx) return renderEditForm(idx, r);
+      const acSuffix = isACTask(r[2]) ? ` — <b>${acRoomForDay(day)[currentLang]}</b>` : '';
+      const taskKey = day.key+'-'+idx;
+      const isDone = !!todayTasks[taskKey];
+      if(isVanessa){
+        return `<li class="${isDone?'done':''}">
+          <input type="checkbox" ${isDone?'checked':''} data-taskkey="${taskKey}">
+          <span class="todo-text">${r[2][currentLang]}${acSuffix}</span>
+        </li>`;
+      }
+      return `<li>
+        <span class="todo-text">📌 ${r[2][currentLang]}${acSuffix} <span class="todo-time">${r[0]}–${r[1]}</span></span>
+        <span class="todo-actions">
+          <button class="todo-edit" data-day="${day.key}" data-idx="${idx}" aria-label="${T.editBtn}" title="${T.editBtn}">✏️</button>
+          <button class="todo-del" data-day="${day.key}" data-idx="${idx}" aria-label="${T.delBtn}" title="${T.delBtn}">✕</button>
+        </span>
+      </li>`;
+    });
+    if(editingHere && todoEditing.idx >= allRows.length){
+      regularItems.push(renderEditForm(todoEditing.idx, ['09:00','10:00',{zh:'',en:''},true]));
+    }
+    const regularHtml = regularItems.length
+      ? `<ul class="todo-tasks">${regularItems.join('')}</ul>`
+      : `<p class="todo-empty">${T.todoEmpty}</p>`;
+    const addRegularBtn = isVanessa ? '' :
+      `<button class="add-task-btn todo-add-regular" data-day="${day.key}">＋ ${T.todoAddRegular}</button>`;
+
+    // ad-hoc tasks for this weekday
+    const adhoc = (adhocCache[day.key] || []).slice()
+      .sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+    const adhocItems = adhoc.map(item => {
+      const timeTag = item.time ? `<span class="todo-time">${item.time}</span> ` : '';
+      if(isVanessa){
+        return `<li class="${item.done?'done':''}">
+          <input type="checkbox" ${item.done?'checked':''} data-adhoc-day="${day.key}" data-adhoc-id="${item.id}">
+          <span class="todo-text">📝 ${timeTag}${escHtml(item.text)}</span>
+        </li>`;
+      }
+      return `<li class="${item.done?'done':''}">
+        <span class="todo-text">📝 ${timeTag}${escHtml(item.text)}</span>
+        <span class="todo-actions">
+          <button class="todo-adhoc-del" data-day="${day.key}" data-id="${item.id}" aria-label="${T.delAria}" title="${T.delAria}">✕</button>
+        </span>
+      </li>`;
+    }).join('');
+    const adhocForm = isVanessa ? '' : `
+      <div class="adhoc-form todo-adhoc-form" data-day="${day.key}">
+        <input type="time" class="todo-adhoc-time">
+        <input type="text" class="todo-adhoc-text" placeholder="${escAttr(T.adhocPlaceholder)}">
+        <button class="todo-adhoc-add">${T.adhocAdd}</button>
+      </div>`;
+    const adhocHtml = (adhoc.length || !isVanessa) ? `
+      <div class="todo-adhoc">
+        <h4>${T.todoAdhocHeading}</h4>
+        ${adhoc.length ? `<ul class="todo-tasks">${adhocItems}</ul>` : `<p class="todo-empty">${T.adhocEmpty}</p>`}
+        ${adhocForm}
+      </div>` : '';
+
+    return `<div class="todo-day"><h3>${day.title[currentLang]}</h3>${regularHtml}${addRegularBtn}${adhocHtml}</div>`;
   }).join('');
 
   if(isVanessa){
@@ -1570,7 +1681,52 @@ async function renderTodo(){
         renderTodo();
       });
     });
+    el.querySelectorAll('input[type=checkbox][data-adhoc-id]').forEach(cb=>{
+      cb.addEventListener('change', async ()=>{
+        await toggleAdhocDone(cb.dataset.adhocDay, cb.dataset.adhocId);
+        renderTodo();
+      });
+    });
+    return;
   }
+
+  // ---- Ma'am & Sir wiring ----
+  el.querySelectorAll('.todo-edit').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ todoEditing = { dayKey: btn.dataset.day, idx: Number(btn.dataset.idx) }; renderTodo(); });
+  });
+  el.querySelectorAll('.todo-del').forEach(btn=>{
+    btn.addEventListener('click', ()=> deleteTodoRow(btn.dataset.day, Number(btn.dataset.idx)));
+  });
+  el.querySelectorAll('.todo-add-regular').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const day = DAYS.find(d=>d.key===btn.dataset.day);
+      todoEditing = { dayKey: day.key, idx: displayRows(day).length };
+      renderTodo();
+    });
+  });
+  const form = el.querySelector('.edit-row');
+  if(form){
+    form.querySelector('#editSaveBtn').addEventListener('click', ()=> saveTodoEdit(form));
+    form.querySelector('#editCancelBtn').addEventListener('click', ()=>{ todoEditing = null; renderTodo(); });
+    const first = form.querySelector('#editTaskZh'); if(first) first.focus();
+  }
+  el.querySelectorAll('.todo-adhoc-del').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await deleteAdhocTask(btn.dataset.day, btn.dataset.id);
+      renderTodo();
+    });
+  });
+  el.querySelectorAll('.todo-adhoc-form').forEach(f=>{
+    const add = async ()=>{
+      const text = f.querySelector('.todo-adhoc-text').value;
+      const time = f.querySelector('.todo-adhoc-time').value;
+      if(!text.trim()) return;
+      await addAdhocTask(f.dataset.day, text, time);
+      renderTodo();
+    };
+    f.querySelector('.todo-adhoc-add').addEventListener('click', add);
+    f.querySelector('.todo-adhoc-text').addEventListener('keydown', e=>{ if(e.key === 'Enter') add(); });
+  });
 }
 
 async function setView(view){
