@@ -193,6 +193,20 @@
     display:block; font-family:'IBM Plex Mono', monospace; font-size: 0.72rem;
     color: var(--clay); margin-bottom: 3px;
   }
+  .reg-manager{ margin: 20px 0 28px; background: var(--card); border-radius: 8px; padding: 14px 16px 16px; box-shadow: var(--shadow); }
+  .reg-hint{ font-size: 0.78rem; color: var(--ink-soft); font-style: italic; margin: 0 0 6px; }
+  .reg-manager .add-task-btn{ margin: 4px 0 10px; }
+  .reg-list{ list-style:none; margin:0; padding:0; }
+  .reg-item{ display:flex; align-items:center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+  .reg-item:last-child{ border-bottom: none; }
+  .reg-main{ flex:1; min-width:0; }
+  .reg-name{ font-size: 0.88rem; line-height: 1.4; }
+  .reg-meta{ font-size: 0.74rem; color: var(--ink-soft); margin-top: 2px; }
+  .reg-editing{ padding: 4px 0; }
+  .reg-days{ display:flex; flex-wrap:wrap; gap: 6px; }
+  .reg-day{ display:flex; align-items:center; gap: 4px; font-size: 0.82rem; background:#fff; border:1px solid var(--line);
+    border-radius: 6px; padding: 6px 9px; cursor:pointer; min-height: 34px; }
+  .reg-day input{ accent-color: var(--clay); }
   .tabs{ display:flex; gap: 4px; margin-bottom: 0; overflow-x:auto; }
   .tab{
     font-family:'Kalam', cursive; font-size: 1rem; font-weight: 700;
@@ -445,6 +459,7 @@
   <div id="summaryView" style="display:none;">
     <h2 class="summary-heading" id="summaryHeading"></h2>
     <div class="notes" id="notes"></div>
+    <div class="reg-manager" id="regManager" style="display:none;"></div>
   </div>
 
 
@@ -555,6 +570,11 @@ const STRINGS = {
     viewTodoLabel: '待辦清單',
     todoHeading: '✅ 每日固定任務清單',
     todoEmpty: '呢日冇固定任務',
+    regHint: '喺度改嘅固定工作會套用到之後每個星期嘅 To-do List。',
+    regAdd: '新增固定工作',
+    regEveryDay: '每日',
+    regNeedDay: '請揀最少一日',
+    regConfirmDelete: (t, d)=>`由之後每個星期(${d})刪除「${t}」?`,
     todoAdhocHeading: '📝 臨時工作',
     todoAddRegular: '新增固定工作',
     todoFormMissing: '請填寫開始/結束時間同工作內容',
@@ -620,6 +640,11 @@ const STRINGS = {
     viewTodoLabel: 'To-do List',
     todoHeading: '✅ Daily Fixed Task List',
     todoEmpty: 'No fixed tasks this day',
+    regHint: 'Changes here apply to the To-do List for every week going forward.',
+    regAdd: 'Add regular task',
+    regEveryDay: 'Every day',
+    regNeedDay: 'Please pick at least one day',
+    regConfirmDelete: (t, d)=>`Delete "${t}" (${d}) from every week going forward?`,
     todoAdhocHeading: '📝 Ad-hoc tasks',
     todoAddRegular: 'Add regular task',
     todoFormMissing: 'Please fill in start/end time and the task',
@@ -1243,7 +1268,128 @@ function renderHeader(){
   document.documentElement.lang = currentLang === 'zh' ? 'zh-Hant' : 'en';
 }
 
+// ---- Regular task manager (Regular Tasks Summary tab, Ma'am & Sir mode) ----
+// Lists every regular (📌) task from the master schedule, grouped by task + time, with the days it runs.
+// Edit / add / delete here changes the master schedule, so it shows in the To-do List for every week
+// going forward (and in any one-off copy of an upcoming day, so nothing gets out of sync).
+let regEditing = null; // group key being edited, or '__new__'
+
+function regularGroups(){
+  const groups = new Map();
+  DAYS.forEach(day => {
+    effectiveRows(day).forEach(r => {
+      if(!r[3]) return;
+      const key = [r[0], r[1], r[2].zh||'', r[2].en||''].join('|');
+      if(!groups.has(key)) groups.set(key, { key, start: r[0], end: r[1], task: r[2], days: [] });
+      groups.get(key).days.push(day.key);
+    });
+  });
+  return [...groups.values()].sort((a, b) => toMinutes(a.start) - toMinutes(b.start) || (a.task.en||'').localeCompare(b.task.en||''));
+}
+
+function regDaysLabel(dayKeys){
+  if(dayKeys.length === DAYS.length) return STRINGS[currentLang].regEveryDay;
+  return DAYS.filter(d => dayKeys.includes(d.key)).map(d => d.label[currentLang]).join(currentLang === 'zh' ? '、' : ', ');
+}
+
+async function applyRegularChange(oldGroup, spec){
+  const oldRow = oldGroup ? [oldGroup.start, oldGroup.end, oldGroup.task, true] : null;
+  const newRow = spec ? [spec.start, spec.end, {zh: spec.zh || spec.en, en: spec.en || spec.zh}, true] : null;
+  const transform = (rows, day) => {
+    let out = rows.slice();
+    if(oldRow) out = out.filter(r => !sameRow(r, oldRow));
+    if(newRow && spec.days.includes(day.key)) out.push(newRow);
+    return out.sort(byStart);
+  };
+  for(const day of DAYS){
+    const affected = (oldGroup && oldGroup.days.includes(day.key)) || (spec && spec.days.includes(day.key));
+    if(!affected) continue;
+    await saveOverrideForDay(day.key, transform(effectiveRows(day), day));
+    if(hasInstanceOverride(day)) await saveInstanceForDay(day, transform(displayRows(day), day));
+  }
+}
+
+function regFormHtml(g){
+  const T = STRINGS[currentLang];
+  const start = g ? g.start : '09:00', end = g ? g.end : '10:00';
+  const days = g ? g.days : [];
+  return `<div class="edit-row reg-form">
+    <div class="edit-times">
+      <label style="display:block;font-size:0.72rem;color:var(--ink-soft);">${T.formStart}<input type="time" class="reg-start" value="${start}"></label>
+      <label style="display:block;font-size:0.72rem;color:var(--ink-soft);">${T.formEnd}<input type="time" class="reg-end" value="${end}"></label>
+    </div>
+    <div class="edit-text-row">
+      <input type="text" class="reg-zh" placeholder="${escAttr(T.formTaskZh)}" value="${escAttr(g ? g.task.zh : '')}">
+      <input type="text" class="reg-en" placeholder="${escAttr(T.formTaskEn)}" value="${escAttr(g ? g.task.en : '')}">
+    </div>
+    <div class="reg-days">${DAYS.map(d => `<label class="reg-day"><input type="checkbox" value="${d.key}" ${days.includes(d.key)?'checked':''}> ${d.label[currentLang]}</label>`).join('')}</div>
+    <div class="edit-actions">
+      <button class="cancel-btn reg-cancel">${T.cancelBtn}</button>
+      <button class="save-btn reg-save">${T.saveBtn}</button>
+    </div>
+  </div>`;
+}
+
+async function renderRegularManager(){
+  const el = document.getElementById('regManager');
+  const T = STRINGS[currentLang];
+  await Promise.all(DAYS.map(d => Promise.all([loadOverrideForDay(d.key), loadInstanceForDay(d)])));
+  const groups = regularGroups();
+  el.innerHTML = `
+    <p class="reg-hint">${T.regHint}</p>
+    ${regEditing === '__new__' ? regFormHtml(null) : `<button class="add-task-btn reg-add">＋ ${T.regAdd}</button>`}
+    <ul class="reg-list">${groups.map(g => regEditing === g.key ? `<li class="reg-editing">${regFormHtml(g)}</li>` : `
+      <li class="reg-item">
+        <div class="reg-main">
+          <div class="reg-name">📌 ${escHtml(g.task[currentLang] || g.task.en || g.task.zh)}</div>
+          <div class="reg-meta"><span class="todo-time">${g.start}–${g.end}</span> · ${regDaysLabel(g.days)}</div>
+        </div>
+        <span class="todo-actions">
+          <button class="reg-edit" data-key="${escAttr(g.key)}" aria-label="${T.editBtn}" title="${T.editBtn}">✏️</button>
+          <button class="reg-del" data-key="${escAttr(g.key)}" aria-label="${T.delBtn}" title="${T.delBtn}">✕</button>
+        </span>
+      </li>`).join('')}</ul>`;
+
+  const findGroup = key => groups.find(g => g.key === key);
+  const add = el.querySelector('.reg-add');
+  if(add) add.addEventListener('click', ()=>{ regEditing = '__new__'; renderRegularManager(); });
+  el.querySelectorAll('.reg-edit').forEach(b => b.addEventListener('click', ()=>{ regEditing = b.dataset.key; renderRegularManager(); }));
+  el.querySelectorAll('.reg-del').forEach(b => b.addEventListener('click', async ()=>{
+    const g = findGroup(b.dataset.key);
+    if(!g || !confirm(T.regConfirmDelete(g.task[currentLang] || g.task.en, regDaysLabel(g.days)))) return;
+    await applyRegularChange(g, null);
+    regEditing = null; afterRegularChange();
+  }));
+  const form = el.querySelector('.reg-form');
+  if(form){
+    form.querySelector('.reg-cancel').addEventListener('click', ()=>{ regEditing = null; renderRegularManager(); });
+    form.querySelector('.reg-save').addEventListener('click', async ()=>{
+      const spec = {
+        start: form.querySelector('.reg-start').value,
+        end: form.querySelector('.reg-end').value,
+        zh: form.querySelector('.reg-zh').value.trim(),
+        en: form.querySelector('.reg-en').value.trim(),
+        days: [...form.querySelectorAll('.reg-days input:checked')].map(i => i.value),
+      };
+      if(!spec.start || !spec.end || (!spec.zh && !spec.en)){ alert(T.todoFormMissing); return; }
+      if(!spec.days.length){ alert(T.regNeedDay); return; }
+      await applyRegularChange(regEditing === '__new__' ? null : findGroup(regEditing), spec);
+      regEditing = null; afterRegularChange();
+    });
+    const first = form.querySelector('.reg-zh'); if(first) first.focus();
+  }
+}
+
+function afterRegularChange(){
+  renderRegularManager();
+  if(activeDayKey) renderTimeline();
+}
+
 function renderNotes(){
+  const isMgmt = currentMode === 'mgmt';
+  document.getElementById('notes').style.display = isMgmt ? 'none' : '';
+  document.getElementById('regManager').style.display = isMgmt ? 'block' : 'none';
+  if(isMgmt){ renderRegularManager(); return; }
   const el = document.getElementById('notes');
   el.innerHTML = NOTES.map(n => {
     const [label, val] = n[currentLang];
@@ -1571,7 +1717,9 @@ function setMode(mode){
   currentMode = mode;
   editingIdx = null;
   todoEditing = null;
+  regEditing = null;
   renderHeader();
+  renderNotes();
   renderTimeline();
   renderAdhoc();
   if(currentView === 'todo') renderTodo();
@@ -1788,6 +1936,7 @@ async function setView(view){
   currentView = view;
   renderHeader();
   if(view === 'todo') renderTodo();
+  if(view === 'summary') renderNotes();
 }
 
 document.getElementById('langSwitch').addEventListener('click', (e)=>{
