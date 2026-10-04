@@ -2140,7 +2140,7 @@ function populateLogFilterOptions(){
   const daySel = document.getElementById('logFilterDay');
   daySel.innerHTML = `<option value="">${STRINGS[currentLang].logFilterAllDays}</option>` +
     DAYS.map(d=>`<option value="${d.key}">${d.label[currentLang]}</option>`).join('');
-  daySel.value = activeDayKey || '';
+  daySel.value = ''; // default to all days so every tick and edit shows
 
   document.getElementById('logFilterType').innerHTML = `
     <option value="">${STRINGS[currentLang].logFilterAllTypes}</option>
