@@ -1929,12 +1929,12 @@ async function restoreTodoWeek(dayKey){
   if(day.key === activeDayKey) renderTimeline();
 }
 
-// To-do card heading: insert the coming date after the weekday name, e.g. "Monday 10/5 — Bedding day…"
+// To-do card heading: weekday name + coming date only, e.g. "Monday 10/5"
 function todoDayTitle(day){
   const title = day.title[currentLang];
   const date = `<span class="todo-day-date">${formatShortDate(dateForWeekday(day.weekday))}</span>`;
   const i = title.indexOf(' — ');
-  return i === -1 ? `${title} ${date}` : `${title.slice(0, i)} ${date}${title.slice(i)}`;
+  return `${i === -1 ? title : title.slice(0, i)} ${date}`; // weekday + date only, no task summary
 }
 
 async function renderTodo(){
